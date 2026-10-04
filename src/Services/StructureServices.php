@@ -33,6 +33,15 @@ class StructureServices
     private static ?array $lines = null;
 
     /**
+     * Asset locations that prove the inside of a structure was read: a quantum core
+     * and a fuel array are fitted in every Upwell structure.
+     */
+    private const KNOWN_CONTENT_FLAGS = ['QuantumCoreRoom', 'StructureFuel'];
+
+    /** Asset location prefixes that only exist once something is fitted inside. */
+    private const KNOWN_CONTENT_PREFIXES = ['ServiceSlot', 'RigSlot'];
+
+    /**
      * Fitted services and the activities they provide, keyed by structure id.
      *
      * Pass the security of each structure to have the activities split into the
@@ -157,18 +166,22 @@ class StructureServices
     }
 
     /**
-     * Which of these structures SeAT holds asset rows for.
+     * Which of these structures SeAT has actually read the inside of.
      *
      * A structure can be known without its contents being known: the access probe
      * records the structure, and only the corporation asset route records what is
-     * fitted in it. Without asset rows nothing fitted can be claimed in either
-     * direction, so a structure like that is a gap with an unknown inside rather
+     * fitted in it. That route is not all-or-nothing either — a character without
+     * reach into a citadel still reports the office folder and the corporate
+     * deliveries hanging off it, and nothing else. So the read has to look for the
+     * two things every Upwell structure has fitted, its quantum core and its fuel
+     * array, or for a module in a slot; anything less says nothing about what is
+     * inside, and a structure like that is a gap with an unknown inside rather
      * than a structure with nothing in it.
      *
      * @param  array<int>  $structureIds
      * @return array<int>
      */
-    public function structuresWithAssets(array $structureIds): array
+    public function structuresWithKnownContents(array $structureIds): array
     {
         $structureIds = array_values(array_unique(array_map('intval', $structureIds)));
 
@@ -179,6 +192,13 @@ class StructureServices
         try {
             $rows = DB::table('corporation_assets')
                 ->whereIn('location_id', $structureIds)
+                ->where(function ($query) {
+                    $query->whereIn('location_flag', self::KNOWN_CONTENT_FLAGS);
+
+                    foreach (self::KNOWN_CONTENT_PREFIXES as $prefix) {
+                        $query->orWhere('location_flag', 'like', $prefix . '%');
+                    }
+                })
                 ->distinct()
                 ->pluck('location_id');
         } catch (\Throwable $e) {

@@ -52,7 +52,7 @@
                                     <div class="im-result-label mb-1">Services</div>
                                     @if(empty($st['services']))
                                         <div class="im-text-muted">
-                                            {{ ($st['assets_known'] ?? true) ? 'No service modules fitted.' : 'No asset data for this corporation.' }}
+                                            {{ ($st['contents_known'] ?? true) ? 'No service modules fitted.' : 'Asset data does not reach inside this structure.' }}
                                         </div>
                                     @else
                                         @foreach($st['services'] as $svc)
@@ -73,7 +73,7 @@
                                         @empty
                                             <span class="im-badge im-badge-gap">
                                                 <i class="fas fa-ban mr-1"></i>
-                                                {{ ($st['assets_known'] ?? true) ? 'No industry activity' : 'Activities unknown' }}
+                                                {{ ($st['contents_known'] ?? true) ? 'No industry activity' : 'Activities unknown' }}
                                             </span>
                                         @endforelse
 

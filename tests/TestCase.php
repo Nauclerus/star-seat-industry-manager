@@ -86,5 +86,17 @@ abstract class TestCase extends Orchestra
                 $table->float('valueFloat')->nullable();
             });
         }
+
+        // Fitted modules and rigs are read from this core table, never written.
+        if (! Schema::hasTable('corporation_assets')) {
+            Schema::create('corporation_assets', function ($table) {
+                $table->bigInteger('item_id')->nullable();
+                $table->integer('type_id');
+                $table->integer('corporation_id')->nullable();
+                $table->bigInteger('location_id')->nullable();
+                $table->string('location_flag')->nullable();
+                $table->integer('quantity')->nullable();
+            });
+        }
     }
 }

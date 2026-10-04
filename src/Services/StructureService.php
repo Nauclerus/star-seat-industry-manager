@@ -70,7 +70,7 @@ class StructureService
 
         $ids = $structures->pluck('structure_id')->map(fn ($id) => (int) $id)->all();
         $securityById = [];
-        $withAssets = $this->services->structuresWithAssets($ids);
+        $withContents = $this->services->structuresWithKnownContents($ids);
 
         foreach ($structures as $s) {
             $securityById[(int) $s->structure_id] = $s->security !== null ? (float) $s->security : null;
@@ -80,7 +80,7 @@ class StructureService
         $statuses = $this->access->statuses($this->resolver->characterIds(), $ids);
 
         return $structures
-            ->map(function ($s) use ($capabilities, $statuses, $ownCorpIds, $withAssets) {
+            ->map(function ($s) use ($capabilities, $statuses, $ownCorpIds, $withContents) {
                 $structureId = (int) $s->structure_id;
                 $security = $s->security !== null ? (float) $s->security : null;
                 $capability = $capabilities[$structureId]
@@ -104,7 +104,7 @@ class StructureService
                     'activities' => $capability['activities'],
                     'access' => $status['status'],
                     'access_denied' => $status['denied'],
-                    'assets_known' => in_array($structureId, $withAssets, true),
+                    'contents_known' => in_array($structureId, $withContents, true),
                     'bonuses' => $this->bonusesFor((int) $s->type_id),
                     'blocked' => $capability['blocked'] ?? [],
                 ];
