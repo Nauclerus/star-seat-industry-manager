@@ -4,18 +4,18 @@ namespace IndustryManager\Helpers;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use IndustryManager\Services\RecipeSources\RecipeSourceResolver;
 
 /**
  * IndustryData — canonical table registry and runtime guard for the recipe data
  * this plugin consumes.
  *
  * These tables are plugin-owned. Nothing outside the plugin creates or writes
- * them; the plugin's own importer fills them from either source:
+ * them; the plugin's own importer fills them:
  *
  *   1. CCP's official JSONL SDE (blueprints.jsonl + planetSchematics.jsonl),
- *      chosen when SeAT core has the recipe seeders.
- *   2. Fuzzwork's per-table gzip dumps, the fallback for installs where core
- *      does not — which is stock SeAT v5 today.
+ *      always the source.
+ *   2. Fuzzwork's per-table gzip dumps, used only when CCP cannot deliver.
  *
  * Column names stay canonical (CamelCase as CCP and Fuzzwork publish them) so
  * the recipe code reads naturally, but the tables belong to the plugin and are
@@ -195,5 +195,24 @@ class IndustryData
         } catch (\Throwable $e) {
             return 'none';
         }
+    }
+
+    /**
+     * Which source the loaded recipe data actually came from, as stamped by the
+     * importer. Falls back to the source a fresh import would use.
+     */
+    public static function recipeSource(): string
+    {
+        try {
+            $s = setting('industry_manager_recipe_source', true);
+
+            if ($s && in_array((string) $s, ['ccp-jsonl', 'fuzzwork'], true)) {
+                return (string) $s;
+            }
+        } catch (\Throwable $e) {
+            // settings unavailable; report what an import would pick
+        }
+
+        return RecipeSourceResolver::preferredName();
     }
 }

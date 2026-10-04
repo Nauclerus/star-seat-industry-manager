@@ -5,8 +5,10 @@ namespace IndustryManager\Tests\Feature;
 use Illuminate\Support\Facades\DB;
 use IndustryManager\Helpers\IndustryActivity;
 use IndustryManager\Helpers\IndustryData;
+use IndustryManager\Helpers\RigScope;
 use IndustryManager\Services\ProductionCalculator;
 use IndustryManager\Services\RecipeSources\CcpJsonlSource;
+use IndustryManager\Services\StructureIndustryRigs;
 use IndustryManager\Tests\TestCase;
 
 /**
@@ -23,11 +25,31 @@ class CcpJsonlSourceTest extends TestCase
         mkdir($dir, 0755, true);
         copy(__DIR__ . '/../fixtures/blueprints.min.jsonl', $dir . '/blueprints.jsonl');
         copy(__DIR__ . '/../fixtures/planetSchematics.min.jsonl', $dir . '/planetSchematics.jsonl');
+        copy(__DIR__ . '/../fixtures/dogmaEffects.min.jsonl', $dir . '/dogmaEffects.jsonl');
+    }
+
+    public function test_imports_the_dogma_effects_rig_scope_needs(): void
+    {
+        $counts = (new CcpJsonlSource(null, '3569502'))->import();
+
+        $this->assertSame(3, $counts[IndustryData::TABLE_EFFECTS]);
+        $this->assertTrue(IndustryData::isEffectsInstalled());
+
+        $rig = DB::table(IndustryData::TABLE_EFFECTS)->where('effectID', 6828)->first();
+        $this->assertSame('rigStructureManufactureMaterialBonus', $rig->effectName);
+        $this->assertSame(RigScope::STRUCTURE, RigScope::tokenFromEffectName($rig->effectName));
+        $this->assertSame([2561], StructureIndustryRigs::writtenAttributes($rig->modifierInfo));
+
+        // The security-band effect scales the bonus attributes on the rig itself.
+        // Its modifiers are item-domain, so it is deliberately not a rig scope.
+        $security = DB::table(IndustryData::TABLE_EFFECTS)->where('effectID', 6842)->first();
+        $this->assertSame('structureEngineeringRigSecurityModification', $security->effectName);
+        $this->assertSame([], StructureIndustryRigs::writtenAttributes($security->modifierInfo));
     }
 
     public function test_imports_recipe_and_pi_rows(): void
     {
-        $counts = (new CcpJsonlSource())->import();
+        $counts = (new CcpJsonlSource(null, '3569502'))->import();
 
         // 681 carries copying + manufacturing + research_material + research_time,
         // 685 carries invention => 5 activity rows.
@@ -40,9 +62,9 @@ class CcpJsonlSourceTest extends TestCase
         $this->assertSame(2, $counts[IndustryData::TABLE_PI_TYPEMAP]);
     }
 
-    public function test_version_comes_from_the_build_directory(): void
+    public function test_the_build_number_is_the_one_ccp_publishes(): void
     {
-        $source = new CcpJsonlSource();
+        $source = new CcpJsonlSource(null, '3569502');
         $source->import();
 
         $this->assertSame('3569502', $source->version());
@@ -51,7 +73,7 @@ class CcpJsonlSourceTest extends TestCase
     public function test_import_marks_the_data_as_installed(): void
     {
         IndustryData::flush();
-        (new CcpJsonlSource())->import();
+        (new CcpJsonlSource(null, '3569502'))->import();
         IndustryData::flush();
 
         $this->assertTrue(IndustryData::isInstalled());
@@ -74,7 +96,7 @@ class CcpJsonlSourceTest extends TestCase
             ['categoryID' => 4, 'categoryName' => 'Material'],
         ]);
 
-        (new CcpJsonlSource())->import();
+        (new CcpJsonlSource(null, '3569502'))->import();
         IndustryData::flush();
 
         $recipe = (new ProductionCalculator())->recipe(681, IndustryActivity::MANUFACTURING);

@@ -7,7 +7,8 @@ use Illuminate\Support\Facades\DB;
 use IndustryManager\Helpers\IndustryData;
 
 /**
- * Fuzzwork's per-table gzip dumps — the fallback that works on stock SeAT today.
+ * Fuzzwork's per-table gzip dumps — the fallback, used only when CCP's own
+ * archive cannot be reached.
  *
  * This is the same endpoint SeAT core's `eve:update:sde` uses, so it follows the
  * path already proven on this install. The recipe tables are already flat, so
@@ -16,8 +17,8 @@ use IndustryManager\Helpers\IndustryData;
  * Verified against CCP build 3569502 — every count matches exactly (5,082
  * blueprints / 19,138 activity pairs, 36,500 materials, 6,330 products, 22,398
  * skills, 1,353 probabilities, 68 PI schematics, 203 PI type-map rows). So this
- * source is complete, not partial; its only weakness is that Fuzzwork lags
- * patches, which is why CCP is preferred when core can provide it.
+ * source is complete, not partial; its weakness is that it follows CCP's
+ * releases by a day or two, which is why CCP is always the preferred source.
  *
  * Writes only to the plugin's own tables.
  */
