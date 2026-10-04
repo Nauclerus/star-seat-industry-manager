@@ -5,13 +5,26 @@ namespace IndustryManager\Services;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use IndustryManager\Helpers\IndustryActivity;
+use IndustryManager\Helpers\JobFilter;
+use IndustryManager\Helpers\JobScope;
 
 /**
- * JobsService — reads SeAT-synced industry jobs (character + corporation) for
- * the current user's scope. Pure read; SeAT already polls these tables.
+ * JobsService — reads SeAT-synced industry jobs for the current user's scope.
+ * Pure read; SeAT already polls these tables.
  *
- * Names (blueprint, product, installer, facility) are resolved with joins, not
- * per-row lookups. No ESI.
+ * Names (blueprint, product, installer, facility, system, corporation) are
+ * resolved with joins, not per-row lookups. No ESI.
+ *
+ * Two stages:
+ *   1. Entitlement — which rows may this user see at all? Character jobs come
+ *      from the user's linked characters, corporation jobs from the user's own
+ *      corporations. Nothing outside that set is ever loaded.
+ *   2. Presentation — JobScope tags each row with the groups it belongs to,
+ *      and JobFilter decides which of them the current view shows.
+ *
+ * The second stage is what makes the personal/corporation/corpmates tabs
+ * cheap: the entitlement query runs once and the tabs are counts over the same
+ * result set.
  */
 class JobsService
 {
@@ -23,77 +36,128 @@ class JobsService
     }
 
     /**
-     * @return array{jobs:Collection, counts:array}
+     * @return array{
+     *     jobs: Collection,
+     *     counts: array<string,int>,
+     *     scope_counts: array<string,int>,
+     *     facets: array{activities: Collection, statuses: Collection, structures: Collection, installers: Collection},
+     *     context: array<string,array>
+     * }
      */
-    public function forUser(): array
+    public function forUser(?JobFilter $filter = null): array
     {
+        $filter = $filter ?? new JobFilter();
+
         $charIds = $this->resolver->characterIds();
         $corpIds = $this->resolver->ownCorporationIds();
 
-        $jobs = collect();
-
-        if (! empty($charIds)) {
-            $jobs = $jobs->merge($this->characterJobs($charIds));
-        }
-        if (! empty($corpIds)) {
-            $jobs = $jobs->merge($this->corporationJobs($corpIds));
-        }
-
-        // Newest-ending first within in-progress; completed after.
-        $jobs = $jobs->sortBy('end_date')->values();
-
-        $counts = [
-            'active' => $jobs->where('status', 'active')->count(),
-            'ready' => $jobs->where('status', 'ready')->count(),
-            'delivered' => $jobs->where('status', 'delivered')->count(),
-            'paused' => $jobs->where('status', 'paused')->count(),
-            'total' => $jobs->count(),
+        $context = [
+            'character_ids' => $charIds,
+            'corporation_ids' => $corpIds,
         ];
 
-        return ['jobs' => $jobs, 'counts' => $counts];
+        // Stage 1: the entitlement set, before any UI filter.
+        $visible = collect();
+
+        if (! empty($charIds)) {
+            $visible = $visible->merge($this->characterJobs($charIds, $context));
+        }
+
+        if (! empty($corpIds)) {
+            $visible = $visible->merge($this->corporationJobs($corpIds, $context));
+        }
+
+        // Facets come from the entitlement set, not the filtered set, so the
+        // dropdowns do not empty themselves as you filter.
+        $facets = $this->facets($visible);
+
+        // Stage 2.
+        $jobs = $visible->filter(fn (array $job) => $filter->matches($job))
+            ->sortBy('end_date')
+            ->values();
+
+        return [
+            'jobs' => $jobs,
+            'counts' => $this->counts($jobs),
+            'scope_counts' => $this->scopeCounts($visible, $filter),
+            'facets' => $facets,
+            'context' => $context,
+        ];
     }
 
-    private function characterJobs(array $charIds): Collection
+    /**
+     * @param  int[] $charIds
+     * @param  array $context
+     */
+    private function characterJobs(array $charIds, array $context): Collection
     {
         $names = DB::table('character_infos')->whereIn('character_id', $charIds)->pluck('name', 'character_id');
 
-        return DB::table('character_industry_jobs as j')
+        $rows = DB::table('character_industry_jobs as j')
             ->leftJoin('invTypes as bt', 'bt.typeID', '=', 'j.blueprint_type_id')
             ->leftJoin('invTypes as pt', 'pt.typeID', '=', 'j.product_type_id')
             ->leftJoin('universe_structures as u', 'u.structure_id', '=', 'j.facility_id')
+            ->leftJoin('solar_systems as s', 's.system_id', '=', 'u.solar_system_id')
+            ->leftJoin('character_affiliations as ca', 'ca.character_id', '=', 'j.installer_id')
+            ->leftJoin('corporation_infos as ci', 'ci.corporation_id', '=', 'ca.corporation_id')
             ->whereIn('j.character_id', $charIds)
             ->get([
                 'j.job_id', 'j.character_id as owner_id', 'j.activity_id', 'j.runs', 'j.status',
-                'j.start_date', 'j.end_date', 'j.installer_id', 'j.product_type_id',
-                'bt.typeName as blueprint_name', 'pt.typeName as product_name', 'u.name as facility_name',
-            ])
-            ->map(fn ($r) => $this->normalize($r, 'character', $names[$r->installer_id] ?? null));
+                'j.start_date', 'j.end_date', 'j.installer_id', 'j.facility_id', 'j.product_type_id',
+                'bt.typeName as blueprint_name', 'pt.typeName as product_name',
+                'u.name as facility_name', 's.name as system_name', 'ci.name as corporation_name',
+            ]);
+
+        // Installers outside the user's own characters still deserve a name.
+        $extra = DB::table('character_infos')
+            ->whereIn('character_id', $rows->pluck('installer_id')->unique()->all())
+            ->pluck('name', 'character_id');
+        $names = $names->merge($extra);
+
+        return $rows->map(function ($r) use ($context, $names) {
+            return $this->normalize($r, JobScope::SOURCE_CHARACTER, $context, $names);
+        });
     }
 
-    private function corporationJobs(array $corpIds): Collection
+    /**
+     * @param  int[] $corpIds
+     * @param  array $context
+     */
+    private function corporationJobs(array $corpIds, array $context): Collection
     {
-        $jobs = DB::table('corporation_industry_jobs as j')
+        $rows = DB::table('corporation_industry_jobs as j')
             ->leftJoin('invTypes as bt', 'bt.typeID', '=', 'j.blueprint_type_id')
             ->leftJoin('invTypes as pt', 'pt.typeID', '=', 'j.product_type_id')
             ->leftJoin('universe_structures as u', 'u.structure_id', '=', 'j.facility_id')
+            ->leftJoin('solar_systems as s', 's.system_id', '=', 'u.solar_system_id')
+            ->leftJoin('corporation_infos as ci', 'ci.corporation_id', '=', 'j.corporation_id')
             ->whereIn('j.corporation_id', $corpIds)
             ->get([
                 'j.job_id', 'j.corporation_id as owner_id', 'j.activity_id', 'j.runs', 'j.status',
-                'j.start_date', 'j.end_date', 'j.installer_id', 'j.product_type_id',
-                'bt.typeName as blueprint_name', 'pt.typeName as product_name', 'u.name as facility_name',
+                'j.start_date', 'j.end_date', 'j.installer_id', 'j.facility_id', 'j.product_type_id',
+                'bt.typeName as blueprint_name', 'pt.typeName as product_name',
+                'u.name as facility_name', 's.name as system_name', 'ci.name as corporation_name',
             ]);
 
-        $installerIds = $jobs->pluck('installer_id')->unique()->filter()->all();
-        $names = DB::table('character_infos')->whereIn('character_id', $installerIds)->pluck('name', 'character_id');
+        $names = DB::table('character_infos')
+            ->whereIn('character_id', $rows->pluck('installer_id')->unique()->filter()->all())
+            ->pluck('name', 'character_id');
 
-        return $jobs->map(fn ($r) => $this->normalize($r, 'corporation', $names[$r->installer_id] ?? null));
+        return $rows->map(function ($r) use ($context, $names) {
+            return $this->normalize($r, JobScope::SOURCE_CORPORATION, $context, $names);
+        });
     }
 
-    private function normalize($r, string $ownerType, ?string $installerName): array
+    private function normalize($r, string $ownerType, array $context, Collection $names): array
     {
+        $ownerId = (int) $r->owner_id;
+        $installerId = (int) $r->installer_id;
+
         return [
             'job_id' => (int) $r->job_id,
             'owner_type' => $ownerType,
+            'owner_id' => $ownerId,
+            'scopes' => JobScope::scopesFor($ownerType, $ownerId, $installerId, $context),
             'activity_id' => (int) $r->activity_id,
             'activity_name' => IndustryActivity::name((int) $r->activity_id),
             'activity_icon' => IndustryActivity::icon((int) $r->activity_id),
@@ -103,9 +167,85 @@ class JobsService
             'status' => $r->status,
             'start_date' => $r->start_date,
             'end_date' => $r->end_date,
-            'installer_id' => (int) $r->installer_id,
-            'installer_name' => $installerName ?? ('Character #' . (int) $r->installer_id),
+            'installer_id' => $installerId,
+            'installer_name' => $names[$installerId] ?? ('Character #' . $installerId),
+            'facility_id' => (int) $r->facility_id,
             'facility_name' => $r->facility_name ?? null,
+            'system_name' => $r->system_name ?? null,
+            'corporation_name' => $r->corporation_name ?? null,
         ];
+    }
+
+    /**
+     * @return array<string,int>
+     */
+    private function counts(Collection $jobs): array
+    {
+        $counts = [];
+        foreach (JobFilter::STATUSES as $status) {
+            $counts[$status] = $jobs->where('status', $status)->count();
+        }
+
+        $counts['total'] = $jobs->count();
+
+        return $counts;
+    }
+
+    /**
+     * How many jobs each scope tab would show, honouring the non-scope filters.
+     *
+     * @return array<string,int>
+     */
+    private function scopeCounts(Collection $visible, JobFilter $filter): array
+    {
+        $counts = [];
+
+        foreach (JobScope::all() as $scope) {
+            $counts[$scope] = $visible->filter(
+                fn (array $job) => $filter->matchesIgnoringScope($job)
+                    && JobScope::matches($job['scopes'], $scope)
+            )->count();
+        }
+
+        return $counts;
+    }
+
+    /**
+     * Distinct values present in the entitlement set, for the filter dropdowns.
+     *
+     * @return array{activities:Collection, statuses:Collection, structures:Collection, installers:Collection}
+     */
+    private function facets(Collection $visible): array
+    {
+        $activities = $visible
+            ->map(fn (array $job) => ['id' => $job['activity_id'], 'name' => $job['activity_name'], 'icon' => $job['activity_icon']])
+            ->unique('id')
+            ->sortBy('name')
+            ->values();
+
+        $statuses = $visible
+            ->map(fn (array $job) => ['id' => $job['status'], 'name' => ucfirst($job['status'])])
+            ->unique('id')
+            ->sortBy('id')
+            ->values();
+
+        $structures = $visible
+            ->filter(fn (array $job) => $job['facility_id'] > 0)
+            ->map(fn (array $job) => [
+                'id' => $job['facility_id'],
+                'name' => $job['facility_name'] ?? ('Structure #' . $job['facility_id']),
+                'system' => $job['system_name'],
+            ])
+            ->unique('id')
+            ->sortBy('name')
+            ->values();
+
+        $installers = $visible
+            ->map(fn (array $job) => ['id' => $job['installer_id'], 'name' => $job['installer_name']])
+            ->unique('id')
+            ->sortBy('name')
+            ->values();
+
+        return compact('activities', 'statuses', 'structures', 'installers');
     }
 }

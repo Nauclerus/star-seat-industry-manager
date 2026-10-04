@@ -9,6 +9,7 @@ use IndustryManager\Helpers\AttributeDiscovery;
 use IndustryManager\Helpers\Decryptor;
 use IndustryManager\Helpers\IndustryActivity;
 use IndustryManager\Helpers\IndustryData;
+use IndustryManager\Helpers\JobFilter;
 use IndustryManager\Services\BlueprintRepository;
 use IndustryManager\Services\CharacterResolver;
 use IndustryManager\Services\InventionCalculator;
@@ -197,13 +198,17 @@ class IndustryManagerController extends Controller
         ]);
     }
 
-    public function jobs(JobsService $jobs)
+    public function jobs(Request $request, JobsService $jobs)
     {
-        $data = $jobs->forUser();
+        $filter = JobFilter::fromRequest($request);
+        $data = $jobs->forUser($filter);
 
         return view('industry-manager::jobs.index', [
             'jobs' => $data['jobs'],
             'counts' => $data['counts'],
+            'scopeCounts' => $data['scope_counts'],
+            'facets' => $data['facets'],
+            'filter' => $filter,
         ]);
     }
 

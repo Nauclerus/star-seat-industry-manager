@@ -676,3 +676,91 @@
     border-radius: var(--im-radius-sm);
 }
 .industry-manager-wrapper .im-icon-btn:hover { color: #ff6b6b; background: rgba(220,53,69,0.1); }
+
+/* ============================================
+   Jobs — scope tabs (personal / corp / corpmates / alliance)
+   ============================================ */
+.industry-manager-wrapper .im-scope-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--im-spacing-sm);
+    margin-bottom: var(--im-spacing-sm);
+}
+.industry-manager-wrapper .im-scope-tab {
+    display: inline-flex;
+    align-items: center;
+    padding: 8px 16px;
+    border-radius: var(--im-radius-md);
+    background: var(--im-dark-card);
+    border: 1px solid var(--im-border);
+    color: var(--im-text-light);
+    font-size: 0.9rem;
+    text-decoration: none;
+    transition: all var(--im-transition-fast) ease;
+}
+.industry-manager-wrapper .im-scope-tab:hover {
+    color: var(--im-text-white);
+    border-color: rgba(102,126,234,0.5);
+    text-decoration: none;
+}
+.industry-manager-wrapper .im-scope-tab.active {
+    background: linear-gradient(135deg, var(--im-primary-start) 0%, var(--im-primary-end) 100%);
+    border-color: transparent;
+    color: #fff;
+}
+.industry-manager-wrapper .im-scope-count {
+    margin-left: 8px;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 0.75rem;
+    background: rgba(0,0,0,0.28);
+    color: inherit;
+}
+.industry-manager-wrapper .im-scope-note {
+    color: var(--im-text-muted);
+    font-size: 0.85rem;
+    margin-bottom: var(--im-spacing-lg);
+}
+
+/* Scope membership badges */
+.industry-manager-wrapper .im-scope-badge {
+    display: inline-block;
+    margin: 1px 2px;
+    font-size: 0.7rem;
+    padding: 2px 8px;
+}
+.industry-manager-wrapper .im-scope-personal    { background: rgba(40,167,69,0.18);  color: #51cf66; }
+.industry-manager-wrapper .im-scope-corporation { background: rgba(102,126,234,0.20); color: #96a8f5; }
+.industry-manager-wrapper .im-scope-corpmates   { background: rgba(253,126,20,0.18);  color: #ffa94d; }
+
+/* ============================================
+   Jobs — filter bar
+   ============================================ */
+.industry-manager-wrapper .im-filter-bar label {
+    color: var(--im-text-muted);
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.industry-manager-wrapper .im-filter-bar .form-control {
+    background-color: var(--im-dark-card);
+    border-color: var(--im-border);
+    color: var(--im-text-light);
+}
+.industry-manager-wrapper .im-filter-bar .form-control:focus {
+    background-color: var(--im-dark-card);
+    border-color: rgba(102,126,234,0.6);
+    color: var(--im-text-white);
+}
+.industry-manager-wrapper .im-card-tools {
+    float: right;
+    display: flex;
+    align-items: center;
+    gap: var(--im-spacing-sm);
+    font-size: 0.85rem;
+}
+.industry-manager-wrapper .im-subtle {
+    font-size: 0.75rem;
+    color: var(--im-text-muted);
+    opacity: 0.8;
+}
