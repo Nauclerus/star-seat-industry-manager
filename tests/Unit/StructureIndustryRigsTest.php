@@ -129,6 +129,26 @@ class StructureIndustryRigsTest extends TestCase
         $this->assertSame('fitted', $job['source']);
     }
 
+    public function test_manufacturing_rigs_do_not_apply_to_a_reaction_job(): void
+    {
+        // A structure fitted with manufacturing ME rigs only. A reaction job reads
+        // the reaction-family multipliers (2718/2717, 2720/2719, 2716/2715), and no
+        // item in the SDE writes them: CCP retired the reaction rigs. So reactions
+        // take nothing, rather than inheriting the best fitted manufacturing rig.
+        $fit = $this->fit([
+            $this->rig(43867, 'Advanced Component ME', ['me' => -2.0], [2557, 2658, 2594]),
+            $this->rig(43875, 'Structure ME', ['me' => -2.0], [2561, 2594]),
+        ]);
+
+        foreach ([RigScope::REACTION_CHEMICAL, RigScope::REACTION_BIO, RigScope::REACTION_HYBRID] as $scope) {
+            $job = StructureIndustryRigs::bonusesFor($fit, IndustryActivity::REACTIONS, $scope);
+
+            $this->assertSame(0.0, $job['me'], $scope);
+            $this->assertSame('uncovered', $job['source'], $scope);
+            $this->assertNull($job['rig'], $scope);
+        }
+    }
+
     public function test_modifiers_accept_a_scope_and_default_to_the_fit_wide_value(): void
     {
         $fit = $this->fit([

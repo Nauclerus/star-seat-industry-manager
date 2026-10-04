@@ -63,6 +63,19 @@ class RigScopeTest extends TestCase
         $this->assertSame([2561, 2562], RigScope::multiplierAttributes(IndustryActivity::MANUFACTURING, RigScope::STRUCTURE));
     }
 
+    public function test_reaction_jobs_use_their_own_family_attributes(): void
+    {
+        // Confirmed from dogmaEffects.jsonl: rigReactionCompMatBonus writes 2718,
+        // rigReactionCompTimeBonus 2717, bio 2720/2719, hybrid 2716/2715.
+        $this->assertSame([2718, 2717], RigScope::multiplierAttributes(IndustryActivity::REACTIONS, RigScope::REACTION_CHEMICAL));
+        $this->assertSame([2720, 2719], RigScope::multiplierAttributes(IndustryActivity::REACTIONS, RigScope::REACTION_BIO));
+        $this->assertSame([2716, 2715], RigScope::multiplierAttributes(IndustryActivity::REACTIONS, RigScope::REACTION_HYBRID));
+
+        // Scope-based means the product decides: a product with no scope has no
+        // attribute, and the caller falls back rather than guessing a family.
+        $this->assertNull(RigScope::multiplierAttributes(IndustryActivity::REACTIONS, RigScope::NONE));
+    }
+
     public function test_activities_without_scope_use_fixed_attributes(): void
     {
         $this->assertSame([2563, 2564], RigScope::multiplierAttributes(IndustryActivity::INVENTION, 'anything'));
