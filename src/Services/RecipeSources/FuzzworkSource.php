@@ -7,7 +7,8 @@ use Illuminate\Support\Facades\DB;
 use IndustryManager\Helpers\IndustryData;
 
 /**
- * Fuzzwork's per-table gzip dumps — the fallback that works on stock SeAT today.
+ * Fuzzwork's per-table gzip dumps — the fallback, used only when CCP's own
+ * archive cannot be reached.
  *
  * This is the same endpoint SeAT core's `eve:update:sde` uses, so it follows the
  * path already proven on this install. The recipe tables are already flat, so
@@ -16,8 +17,8 @@ use IndustryManager\Helpers\IndustryData;
  * Verified against CCP build 3569502 — every count matches exactly (5,082
  * blueprints / 19,138 activity pairs, 36,500 materials, 6,330 products, 22,398
  * skills, 1,353 probabilities, 68 PI schematics, 203 PI type-map rows). So this
- * source is complete, not partial; its only weakness is that Fuzzwork lags
- * patches, which is why CCP is preferred when core can provide it.
+ * source is complete, not partial; its weakness is that it follows CCP's
+ * releases by a day or two, which is why CCP is always the preferred source.
  *
  * Writes only to the plugin's own tables.
  */
@@ -55,6 +56,23 @@ class FuzzworkSource implements RecipeSource
             'table' => IndustryData::TABLE_PI_TYPEMAP,
             'columns' => ['schematicID', 'typeID', 'quantity', 'isInput'],
         ],
+        // Dogma effects: the full dump column order, with only the three we need
+        // kept. The row parser yields every value in dump order, so the column
+        // list has to match the dump exactly even though most of it is unused.
+        'dgmEffects' => [
+            'table' => IndustryData::TABLE_EFFECTS,
+            'columns' => [
+                'effectID', 'effectName', 'effectCategory', 'preExpression',
+                'postExpression', 'description', 'guid', 'iconID', 'isOffensive',
+                'isAssistance', 'durationAttributeID', 'trackingSpeedAttributeID',
+                'dischargeAttributeID', 'rangeAttributeID', 'falloffAttributeID',
+                'disallowAutoRepeat', 'published', 'displayName', 'isWarpSafe',
+                'rangeChance', 'electronicChance', 'propulsionChance', 'distribution',
+                'sfxName', 'npcUsageChanceAttributeID', 'npcActivationChanceAttributeID',
+                'fittingUsageChanceAttributeID', 'modifierInfo',
+            ],
+            'keep' => ['effectID', 'effectName', 'modifierInfo'],
+        ],
     ];
 
     private string $version = 'unknown';
@@ -78,7 +96,7 @@ class FuzzworkSource implements RecipeSource
     {
         $counts = [];
 
-        foreach (array_merge(IndustryData::TABLES, IndustryData::PI_TABLES) as $table) {
+        foreach (array_merge(IndustryData::TABLES, IndustryData::PI_TABLES, IndustryData::EFFECT_TABLES) as $table) {
             if (IndustryData::hasTable($table)) {
                 DB::table($table)->delete();
             }
@@ -143,12 +161,13 @@ class FuzzworkSource implements RecipeSource
 
         $rows = 0;
         $buffer = [];
+        $keep = $mapping['keep'] ?? $columns;
 
         foreach (preg_split('/(?=INSERT INTO `' . $dumpTable . '` VALUES)/', $sql, -1, PREG_SPLIT_NO_EMPTY) as $statement) {
             $body = substr($statement, strpos($statement, 'VALUES') + 6);
 
             foreach ($this->rows($body, count($columns)) as $row) {
-                $buffer[] = array_combine($columns, $row);
+                $buffer[] = array_intersect_key(array_combine($columns, $row), array_flip($keep));
 
                 if (count($buffer) >= 1000) {
                     DB::table($table)->insert($buffer);
@@ -252,6 +271,39 @@ class FuzzworkSource implements RecipeSource
             return strpbrk($trimmed, '.eE') !== false ? (float) $trimmed : (int) $trimmed;
         }
 
-        return $value;
+        return $this->unescape($value);
+    }
+
+    /**
+     * mysqldump writes string literals with backslash escapes, so a JSON payload
+     * arrives as `[{\"key\": 1}]`. Stored verbatim that is not decodable JSON, so
+     * the escapes are resolved here — this is what the scope resolver reads.
+     */
+    private function unescape(string $value): string
+    {
+        if (! str_contains($value, '\\')) {
+            return $value;
+        }
+
+        $out = '';
+        $length = strlen($value);
+
+        for ($i = 0; $i < $length; $i++) {
+            if ($value[$i] === '\\' && $i + 1 < $length) {
+                $out .= match ($value[$i + 1]) {
+                    'n' => "\n",
+                    't' => "\t",
+                    'r' => "\r",
+                    default => $value[$i + 1],
+                };
+
+                $i++;
+                continue;
+            }
+
+            $out .= $value[$i];
+        }
+
+        return $out;
     }
 }

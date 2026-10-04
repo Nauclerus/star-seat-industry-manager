@@ -4,7 +4,7 @@
 @section('page_header', 'Blueprint Detail')
 
 @push('head')
-<link rel="stylesheet" href="{{ asset('vendor/industry-manager/css/industry-manager.css') }}?v=1">
+<link rel="stylesheet" href="{{ asset('vendor/industry-manager/css/industry-manager.css') }}?v=6">
 @endpush
 
 @section('full')

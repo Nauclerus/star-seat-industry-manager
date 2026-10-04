@@ -5,10 +5,10 @@ namespace IndustryManager\Services\RecipeSources;
 /**
  * Picks the recipe source for this install.
  *
- * CcpJsonlSource is preferred whenever SeAT core can provide it — checked by the
- * seeder classes being present, not by a config flag, so the plugin switches
- * automatically the day that lands. FuzzworkSource is the fallback and is what
- * runs on stock SeAT v5 today.
+ * CCP's official JSONL SDE is always preferred: it is the authoritative source
+ * and it appears the day a patch lands, while the community dumps follow it.
+ * FuzzworkSource is the fallback, reached when CCP cannot be contacted or when
+ * an operator explicitly asks for it with --source=fuzzwork.
  *
  * Both write only to the plugin's own tables, so this choice never affects core.
  */
@@ -36,7 +36,15 @@ class RecipeSourceResolver
      */
     public static function preferred(): RecipeSource
     {
-        return CcpJsonlSource::available() ? new CcpJsonlSource() : new FuzzworkSource();
+        return new CcpJsonlSource();
+    }
+
+    /**
+     * The source to fall back to when the preferred one cannot deliver.
+     */
+    public static function fallback(): RecipeSource
+    {
+        return new FuzzworkSource();
     }
 
     /**
@@ -52,6 +60,6 @@ class RecipeSourceResolver
      */
     public static function preferredName(): string
     {
-        return CcpJsonlSource::available() ? 'ccp-jsonl' : 'fuzzwork';
+        return 'ccp-jsonl';
     }
 }

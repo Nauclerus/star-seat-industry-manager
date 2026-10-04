@@ -9,12 +9,14 @@ use IndustryManager\Helpers\AttributeDiscovery;
 use IndustryManager\Helpers\Decryptor;
 use IndustryManager\Helpers\IndustryActivity;
 use IndustryManager\Helpers\IndustryData;
+use IndustryManager\Helpers\JobFilter;
 use IndustryManager\Services\BlueprintRepository;
 use IndustryManager\Services\CharacterResolver;
 use IndustryManager\Services\InventionCalculator;
 use IndustryManager\Services\JobsService;
 use IndustryManager\Services\ProductionCalculator;
 use IndustryManager\Services\ReactionService;
+use IndustryManager\Services\RunAssigner;
 use IndustryManager\Services\StatusService;
 use IndustryManager\Services\StructureIndustryRigs;
 use IndustryManager\Services\StructureService;
@@ -113,6 +115,12 @@ class IndustryManagerController extends Controller
         $structureId = ctype_digit((string) $request->query('structure')) ? (int) $request->query('structure') : null;
         $fit = $structureId ? $structures->fitForStructure($structureId) : null;
 
+        // With a structure chosen, every run uses it. Without one, the assigner
+        // picks the best structure per run — which is the point, since a rig only
+        // covers the scopes its dogma effects write, so the right structure differs
+        // between a component blueprint and a ship one.
+        $assigner = new RunAssigner($fit ? collect([$fit]) : $structures->forUser());
+
         $tree = null;
         $recipe = null;
         $productName = null;
@@ -129,6 +137,7 @@ class IndustryManagerController extends Controller
                     'sub_component_me' => $subMe,
                     'activity_id' => $activity,
                     'rig_modifier' => $fit ? StructureIndustryRigs::materialModifier($fit) : 1.0,
+                    'assigner' => $assigner,
                 ]);
 
                 if (! empty($recipe['product_type_id'])) {
@@ -189,13 +198,17 @@ class IndustryManagerController extends Controller
         ]);
     }
 
-    public function jobs(JobsService $jobs)
+    public function jobs(Request $request, JobsService $jobs)
     {
-        $data = $jobs->forUser();
+        $filter = JobFilter::fromRequest($request);
+        $data = $jobs->forUser($filter);
 
         return view('industry-manager::jobs.index', [
             'jobs' => $data['jobs'],
             'counts' => $data['counts'],
+            'scopeCounts' => $data['scope_counts'],
+            'facets' => $data['facets'],
+            'filter' => $filter,
         ]);
     }
 

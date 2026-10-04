@@ -131,13 +131,14 @@ class ProductionCalculator
         $activityId = (int) ($opts['activity_id'] ?? IndustryActivity::MANUFACTURING);
         $structureModifier = (float) ($opts['structure_modifier'] ?? 1.0);
         $rigModifier = (float) ($opts['rig_modifier'] ?? 1.0);
+        $assigner = $opts['assigner'] ?? null;
 
         if ($this->recipe($blueprintTypeId, $activityId) === null) {
             return null;
         }
 
         $baseTotals = [];
-        $root = $this->expand($blueprintTypeId, $activityId, $runs, $me, $subMe, $maxDepth, 0, [], $baseTotals, $structureModifier, $rigModifier);
+        $root = $this->expand($blueprintTypeId, $activityId, $runs, $me, $subMe, $maxDepth, 0, [], $baseTotals, $structureModifier, $rigModifier, $assigner);
 
         $baseList = array_values($baseTotals);
         usort($baseList, fn ($a, $b) => strcmp($a['name'], $b['name']));
@@ -292,12 +293,21 @@ class ProductionCalculator
         array $path,
         array &$baseTotals,
         float $structureModifier = 1.0,
-        float $rigModifier = 1.0
+        float $rigModifier = 1.0,
+        ?RunAssigner $assigner = null
     ): array {
         $recipe = $this->recipe($bp, $activityId);
         $meFraction = $me / 100.0;
         $isCycle = in_array($bp, $path, true);
         $childPath = array_merge($path, [$bp]);
+
+        // Per-run assignment: the structure whose fitted rig covers this job's
+        // scope, and the character whose skills apply. When an assigner is present
+        // it replaces the flat modifiers for this node.
+        $assignment = $assigner ? $assigner->for($recipe) : null;
+
+        $materialModifier = $assignment ? $assignment['material_modifier'] : $structureModifier * $rigModifier;
+        $timeModifier = $assignment ? $assignment['time_modifier'] : 1.0;
 
         $node = [
             'blueprint_type_id' => $bp,
@@ -308,11 +318,19 @@ class ProductionCalculator
             'depth' => $depth,
             'structure_modifier' => $structureModifier,
             'rig_modifier' => $rigModifier,
+            'material_modifier' => $materialModifier,
+            'time_modifier' => $timeModifier,
+            'adjusted_time' => (int) round(($recipe['time'] ?? 0) * $timeModifier),
+            'assignment' => $assignment,
             'materials' => [],
         ];
 
         foreach ($recipe['materials'] as $mat) {
             $qty = $this->adjustedQuantity($mat['base_quantity'], $runs, $meFraction, $structureModifier, $rigModifier);
+
+            if ($assignment) {
+                $qty = $this->adjustedQuantity($mat['base_quantity'], $runs, $meFraction, 1.0, $assignment['material_modifier']);
+            }
 
             $entry = [
                 'type_id' => $mat['type_id'],
@@ -332,9 +350,10 @@ class ProductionCalculator
                 $subRuns = (int) ceil($qty / $perRun);
 
                 $entry['sub_runs'] = $subRuns;
-                // Sub-components inherit the same structure/rig modifiers unless
-                // a per-level structure is chosen later; that is the documented
-                // assumption, and the trace tab shows it.
+                // Sub-components get their own assignment when an assigner is
+                // present, which is the point of the plan: a sub-component may need
+                // a different structure than the parent. Without an assigner they
+                // inherit the same modifiers, which is the documented assumption.
                 $entry['children'] = $this->expand(
                     $mat['buildable_blueprint'],
                     IndustryActivity::MANUFACTURING,
@@ -346,7 +365,8 @@ class ProductionCalculator
                     $childPath,
                     $baseTotals,
                     $structureModifier,
-                    $rigModifier
+                    $rigModifier,
+                    $assigner
                 );
             } else {
                 // Leaf — acquire as-is. Roll into the base-material total.

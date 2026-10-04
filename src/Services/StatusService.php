@@ -34,12 +34,15 @@ class StatusService
             ];
         }
 
+        $source = IndustryData::recipeSource();
+
         return [
             'installed' => IndustryData::isInstalled(),
             'version' => IndustryData::recipeVersion(),
             'core_version' => $this->sdeVersion(),
-            'source' => RecipeSourceResolver::preferredName(),
-            'source_label' => RecipeSourceResolver::preferred()->label(),
+            'source' => $source,
+            'source_label' => RecipeSourceResolver::make($source)->label(),
+            'preferred_source' => RecipeSourceResolver::preferredName(),
             'ccp_available' => CcpJsonlSource::available(),
             'tables' => $tables,
         ];

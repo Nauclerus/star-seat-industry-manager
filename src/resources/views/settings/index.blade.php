@@ -4,7 +4,7 @@
 @section('page_header', 'Settings')
 
 @push('head')
-<link rel="stylesheet" href="{{ asset('vendor/industry-manager/css/industry-manager.css') }}?v=4">
+<link rel="stylesheet" href="{{ asset('vendor/industry-manager/css/industry-manager.css') }}?v=6">
 @endpush
 
 @section('full')
@@ -25,11 +25,6 @@
 
                 <p class="im-text-muted">
                     <strong>Source:</strong> {{ $sde['source_label'] }}.
-                    @if($sde['ccp_available'])
-                        SeAT core provides the recipe seeders, so the authoritative CCP JSONL SDE is used.
-                    @else
-                        SeAT core does not provide the recipe seeders yet, so Fuzzwork's per-table dumps are used — complete but lagging patches. This switches to CCP automatically once core gains them.
-                    @endif
                     @if($sde['core_version']) Core SDE build: <code>{{ $sde['core_version'] }}</code>.@endif
                 </p>
 
@@ -82,7 +77,6 @@
             <div class="card-body">
                 <ul class="im-text-muted">
                     <li><strong>No ESI calls.</strong> Blueprints, jobs, structures and assets all come from data SeAT already syncs.</li>
-                    <li><strong>Recipes</strong> (what each blueprint or schematic needs) are not part of SeAT's core SDE. Industry Manager keeps them in its own <code>industry_manager_*</code> tables and fills them with <code>industry-manager:import-recipes</code>, which auto-selects CCP's official JSONL SDE or Fuzzwork's dumps. Removing the plugin drops those tables with it.</li>
                     <li><strong>Pricing / ISK</strong> is not part of this version. It arrives with Manager Core integration in a later update.</li>
                     <li>Persisted preferences (default ME, decryptor, etc.) are planned but not stored yet.</li>
                 </ul>

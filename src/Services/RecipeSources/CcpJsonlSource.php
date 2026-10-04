@@ -44,11 +44,20 @@ class CcpJsonlSource implements RecipeSource
 
     private string $work;
 
+    private ?string $pinned = null;
+
     private string $version = 'unknown';
 
-    public function __construct(?string $workDir = null)
+    /**
+     * @param  string|null  $workDir  Where downloaded files are kept. Defaults to
+     *                                storage/sde/industry-manager/.
+     * @param  string|null  $build    Pin the SDE build instead of asking CCP which
+     *                                one is current. Used by the tests.
+     */
+    public function __construct(?string $workDir = null, ?string $build = null)
     {
         $this->work = $workDir ?? storage_path('sde/industry-manager/');
+        $this->pinned = $build;
     }
 
     public function name(): string
@@ -67,14 +76,15 @@ class CcpJsonlSource implements RecipeSource
     }
 
     /**
-     * Is this source available on the current install?
+     * Can this source deliver its files on this install?
      *
-     * Chosen only when SeAT core actually has the recipe seeders — the day the
-     * upstream PR lands, the plugin switches source with no further change.
+     * CCP publishes the archive itself, so the only real requirement is the
+     * zip extension used to extract it. The import reuses the files SeAT core
+     * already extracted whenever they are on disk, and downloads otherwise.
      */
     public static function available(): bool
     {
-        return class_exists(\Seat\Eveapi\Database\Seeders\Sde\Ccp\BlueprintsSeeder::class);
+        return class_exists(\ZipArchive::class);
     }
 
     public function import(): array
@@ -83,13 +93,16 @@ class CcpJsonlSource implements RecipeSource
             File::makeDirectory($this->work, 0755, true);
         }
 
-        [$blueprints, $schematics] = $this->locateFiles();
+        [$blueprints, $schematics, $effects] = $this->locateFiles();
 
-        if (! $blueprints && ! $schematics) {
-            throw new \RuntimeException('Could not find or download CCP SDE files (blueprints.jsonl / planetSchematics.jsonl).');
+        if (! $blueprints && ! $schematics && ! $effects) {
+            throw new \RuntimeException('Could not find or download CCP SDE files (blueprints.jsonl / planetSchematics.jsonl / dogmaEffects.jsonl).');
         }
 
         $rows = [];
+
+        // One clear for the whole run, so a partial file set cannot leave stale rows.
+        $this->truncate();
 
         if ($blueprints) {
             $rows = array_merge($rows, $this->importBlueprints($blueprints));
@@ -99,24 +112,76 @@ class CcpJsonlSource implements RecipeSource
             $rows = array_merge($rows, $this->importSchematics($schematics));
         }
 
+        if ($effects) {
+            $rows = array_merge($rows, $this->importEffects($effects));
+        }
+
         return $rows;
     }
 
     /**
-     * @return array{0:?string, 1:?string}
+     * @return array{0:?string, 1:?string, 2:?string}
+     */
+    /**
+     * Files for the build CCP is publishing right now.
+     *
+     * Anything already on disk for that build is reused — SeAT core extracts the
+     * same archive, and so may a previous run of this import. Files from an older
+     * build are never reused silently, because that is what would leave the
+     * recipe data stale after a patch.
+     *
+     * @return array{0:?string, 1:?string, 2:?string}
      */
     private function locateFiles(): array
     {
-        $blueprints = $this->findUnderStorage('blueprints.jsonl');
-        $schematics = $this->findUnderStorage('planetSchematics.jsonl');
+        $onDisk = [
+            $this->findUnderStorage('blueprints.jsonl'),
+            $this->findUnderStorage('planetSchematics.jsonl'),
+            $this->findUnderStorage('dogmaEffects.jsonl'),
+        ];
 
-        if ($blueprints || $schematics) {
-            $this->version = $this->buildFromPath($blueprints ?? $schematics) ?? 'unknown';
+        $diskBuild = $this->buildFromPath($onDisk[0] ?? $onDisk[1] ?? $onDisk[2]);
+        $current = $this->pinned ?? $this->currentBuild();
 
-            return [$blueprints, $schematics];
+        if ($current === null) {
+            // CCP cannot be reached: the newest files on disk are the best there is.
+            $this->version = $diskBuild ?? 'unknown';
+
+            return $onDisk;
         }
 
-        return $this->downloadAndExtract();
+        $this->version = $current;
+
+        if ($diskBuild === $current) {
+            return $onDisk;
+        }
+
+        return $this->downloadAndExtract($current);
+    }
+
+    /**
+     * Which build CCP's `latest` alias points at, from the redirect target:
+     * `.../tranquility/eve-online-static-data-3569502-jsonl.zip`.
+     */
+    private function currentBuild(): ?string
+    {
+        try {
+            $client = new Client(['timeout' => 30, 'connect_timeout' => 10]);
+
+            $res = $client->request('HEAD', self::CCP_LATEST_URL, [
+                'headers' => ['User-Agent' => 'IndustryManager-SeAT-plugin'],
+            ]);
+
+            $url = (string) ($res->getHeaders()['x-effective-url'][0] ?? $res->getEffectiveUrl());
+
+            if (preg_match('/static-data-(\d+)-jsonl\.zip/', $url, $m)) {
+                return $m[1];
+            }
+        } catch (\Throwable $e) {
+            // Unreachable; the caller decides what to fall back to.
+        }
+
+        return null;
     }
 
     /**
@@ -159,16 +224,25 @@ class CcpJsonlSource implements RecipeSource
     }
 
     /**
-     * @return array{0:?string, 1:?string}
+     * Fetch CCP's archive and keep the three files this plugin needs, under a
+     * directory named for the build so a later run can recognise and reuse them.
+     *
+     * @return array{0:?string, 1:?string, 2:?string}
      */
-    private function downloadAndExtract(): array
+    private function downloadAndExtract(string $build): array
     {
         if (! class_exists(\ZipArchive::class)) {
             throw new \RuntimeException("The PHP zip extension is required to extract CCP's SDE but is not loaded.");
         }
 
+        $dir = $this->work . $build . '/';
+
+        if (! File::exists($dir)) {
+            File::makeDirectory($dir, 0755, true);
+        }
+
         $client = new Client(['timeout' => 1200, 'connect_timeout' => 30]);
-        $zipPath = $this->work . 'ccp-sde.zip';
+        $zipPath = $dir . 'ccp-sde.zip';
 
         $res = $client->request('GET', self::CCP_LATEST_URL, [
             'sink' => $zipPath,
@@ -179,8 +253,8 @@ class CcpJsonlSource implements RecipeSource
             throw new \RuntimeException('Download failed: HTTP ' . $res->getStatusCode());
         }
 
-        // The redirect target names the build, e.g.
-        // .../tranquility/eve-online-static-data-3569502-jsonl.zip
+        // The redirect target names the build, and it is authoritative when it
+        // disagrees with the alias we were given.
         $effective = (string) ($res->getHeaders()['x-effective-url'][0] ?? '');
 
         if (preg_match('/static-data-(\d+)-jsonl\.zip/', $effective, $m)) {
@@ -193,7 +267,7 @@ class CcpJsonlSource implements RecipeSource
             throw new \RuntimeException('Could not open the downloaded zip.');
         }
 
-        $wanted = ['blueprints.jsonl', 'planetSchematics.jsonl'];
+        $wanted = ['blueprints.jsonl', 'planetSchematics.jsonl', 'dogmaEffects.jsonl'];
         $found = [];
 
         for ($i = 0; $i < $zip->numFiles; $i++) {
@@ -201,21 +275,26 @@ class CcpJsonlSource implements RecipeSource
 
             foreach ($wanted as $w) {
                 if (strcasecmp(basename($entry), $w) === 0) {
-                    $zip->extractTo($this->work, $entry);
-                    $found[$w] = $this->work . $entry;
+                    $zip->extractTo($dir, $entry);
+                    $found[$w] = $dir . basename($entry);
                 }
             }
         }
 
         $zip->close();
 
-        return [$found['blueprints.jsonl'] ?? null, $found['planetSchematics.jsonl'] ?? null];
+        // The archive is ~100 MB and the extracted files are what the import reads.
+        @unlink($zipPath);
+
+        return [
+            $found['blueprints.jsonl'] ?? null,
+            $found['planetSchematics.jsonl'] ?? null,
+            $found['dogmaEffects.jsonl'] ?? null,
+        ];
     }
 
     private function importBlueprints(string $path): array
     {
-        $this->truncate();
-
         $counts = array_fill_keys(IndustryData::TABLES, 0);
         $buffer = array_fill_keys(IndustryData::TABLES, []);
 
@@ -395,10 +474,68 @@ class CcpJsonlSource implements RecipeSource
 
     private function truncate(): void
     {
-        foreach (array_merge(IndustryData::TABLES, IndustryData::PI_TABLES) as $table) {
+        foreach (array_merge(IndustryData::TABLES, IndustryData::PI_TABLES, IndustryData::EFFECT_TABLES) as $table) {
             if (IndustryData::hasTable($table)) {
                 DB::table($table)->delete();
             }
         }
+    }
+
+    /**
+     * Dogma effects — the definitions SeAT core does not seed. Stored as the
+     * plugin's own table so the rig scope can be resolved without a core change.
+     *
+     * `modifierInfo` is kept as the JSON CCP publishes it; the scope resolver
+     * reads `modifiedAttributeID` from it.
+     */
+    private function importEffects(string $path): array
+    {
+        $counts = [IndustryData::TABLE_EFFECTS => 0];
+        $buffer = [];
+
+        $handle = fopen($path, 'r');
+
+        while (($line = fgets($handle)) !== false) {
+            $line = trim($line);
+
+            if ($line === '') {
+                continue;
+            }
+
+            $effect = json_decode($line, true);
+
+            if (! is_array($effect)) {
+                continue;
+            }
+
+            $effectId = (int) ($effect['_key'] ?? 0);
+
+            if (! $effectId) {
+                continue;
+            }
+
+            $buffer[] = [
+                'effectID' => $effectId,
+                'effectName' => mb_substr((string) ($effect['name'] ?? ''), 0, 400),
+                'modifierInfo' => isset($effect['modifierInfo'])
+                    ? json_encode($effect['modifierInfo'])
+                    : null,
+            ];
+
+            if (count($buffer) >= 1000) {
+                DB::table(IndustryData::TABLE_EFFECTS)->insert($buffer);
+                $counts[IndustryData::TABLE_EFFECTS] += count($buffer);
+                $buffer = [];
+            }
+        }
+
+        if ($buffer) {
+            DB::table(IndustryData::TABLE_EFFECTS)->insert($buffer);
+            $counts[IndustryData::TABLE_EFFECTS] += count($buffer);
+        }
+
+        fclose($handle);
+
+        return $counts;
     }
 }

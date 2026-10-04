@@ -4,7 +4,7 @@
 @section('page_header', 'Production Calculator')
 
 @push('head')
-<link rel="stylesheet" href="{{ asset('vendor/industry-manager/css/industry-manager.css') }}?v=4">
+<link rel="stylesheet" href="{{ asset('vendor/industry-manager/css/industry-manager.css') }}?v=6">
 @endpush
 
 @section('full')
@@ -67,9 +67,6 @@
                                     </option>
                                 @endforeach
                             </select>
-                            <small class="im-text-muted">
-                                Only the ME rig is applied to material quantities. TE and cost affect time and ISK, not the material list.
-                            </small>
                         </div>
                     </div>
                     @if(!empty($ownedMeOptions))
@@ -94,11 +91,11 @@
                     <p class="im-text-muted">
                         {{ $fit['type_name'] }} in {{ $fit['system_name'] }} —
                         {{ $fit['security_class'] }}{{ $fit['security'] !== null ? ' (' . number_format($fit['security'], 1) . ')' : '' }},
-                        multiplier ×{{ $fit['multiplier'] }}{{ $fit['source'] === 'fitted' ? ' (read from the rig)' : ' (fallback table)' }}.
+                        multiplier ×{{ $fit['multiplier'] }}.
                     </p>
 
                     @if(empty($fit['me_bonus']))
-                        <p class="im-text-muted">No material-efficiency rig fitted, so the material modifier stays 1.0.</p>
+                        <p class="im-text-muted">No material-efficiency rig fitted.</p>
                     @else
                         <p>
                             Material modifier applied:
@@ -110,7 +107,7 @@
                     @if($fit['te_bonus'] > 0 || $fit['cost_bonus'] > 0)
                         <p class="im-text-muted">
                             @if($fit['te_bonus'] > 0)TE rig {{ $fit['te_bonus'] }}% — affects duration, not quantities.@endif
-                            @if($fit['cost_bonus'] > 0) {{ $fit['cost_bonus'] }}% job cost bonus (ISK, v1.1).@endif
+                            @if($fit['cost_bonus'] > 0) {{ $fit['cost_bonus'] }}% job cost bonus.@endif
                         </p>
                     @endif
                 </div>
@@ -215,6 +212,7 @@
                                     <span class="im-tree-qty">&times;{{ number_format($totalOutput) }}</span>
                                 </div>
                                 <div class="im-tree-children">
+                                    @include('industry-manager::calculator._assignment', ['node' => $tree['root'], 'depth' => 0])
                                     @include('industry-manager::calculator._tree_node', ['node' => $tree['root'], 'depth' => 1])
                                 </div>
                             </div>

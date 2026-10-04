@@ -4,7 +4,7 @@
 @section('page_header', 'Industry Manager Diagnostic')
 
 @push('head')
-<link rel="stylesheet" href="{{ asset('vendor/industry-manager/css/industry-manager.css') }}?v=4">
+<link rel="stylesheet" href="{{ asset('vendor/industry-manager/css/industry-manager.css') }}?v=6">
 <style>
     .im-discovery .step-section { margin-bottom: 1.5rem; padding: 1rem; background-color: rgba(0,0,0,0.15); border: 1px solid var(--im-border); border-radius: var(--im-radius-md); }
     .im-discovery .step-section h4 { color: var(--im-text-white); margin-bottom: 0.5rem; }
@@ -98,11 +98,7 @@
                             <h4>When to use</h4>
                             <p>When a calculator result disagrees with the game. Find the material whose <code>final</code> differs and the step where it diverges.</p>
                             <h4>Heads up</h4>
-                            <p>
-                                The rig modifier comes from the fitted rig's own attributes (2593 TE / 2594 ME / 2595 cost) scaled by the
-                                security multiplier stored on that rig. Leave the structure blank to trace an unrigged fit, which is the case
-                                the in-game window is easiest to reconcile against.
-                            </p>
+                            <p>Leave the structure blank to trace an unrigged fit, which is the case the in-game window is easiest to reconcile against.</p>
                         </div>
 
                         <form method="GET" action="{{ route('industry-manager.diagnostic') }}" class="im-calc-form form-row align-items-end">

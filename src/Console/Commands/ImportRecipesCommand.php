@@ -4,14 +4,14 @@ namespace IndustryManager\Console\Commands;
 
 use Illuminate\Console\Command;
 use IndustryManager\Helpers\IndustryData;
+use IndustryManager\Services\RecipeSources\RecipeSource;
 use IndustryManager\Services\RecipeSources\RecipeSourceResolver;
 
 /**
  * Imports the industry + planetary recipe data the plugin needs.
  *
- * Source is chosen automatically: CCP's official JSONL SDE when SeAT core can
- * provide it (the recipe seeders are present), otherwise Fuzzwork's per-table
- * gzip dumps. Pass --source to override.
+ * CCP's official JSONL SDE is always the source. Fuzzwork's per-table gzip
+ * dumps are used only when CCP cannot deliver, or when --source asks for them.
  *
  * Re-runnable: each plugin table is cleared and refilled, so this refreshes the
  * recipe data after an EVE patch. Writes only to `industry_manager_*`; nothing in
@@ -27,17 +27,37 @@ class ImportRecipesCommand extends Command
 
     public function handle(): int
     {
-        $name = $this->option('source') ?: RecipeSourceResolver::preferredName();
+        $name = $this->option('source');
 
-        if (! in_array($name, ['ccp-jsonl', 'fuzzwork'], true)) {
-            $this->error('Unknown source: ' . $name);
-            $this->line('Valid sources: ccp-jsonl, fuzzwork');
+        // An explicit source is honoured as-is: no silent fallback.
+        if ($name) {
+            if (! in_array($name, ['ccp-jsonl', 'fuzzwork'], true)) {
+                $this->error('Unknown source: ' . $name);
+                $this->line('Valid sources: ccp-jsonl, fuzzwork');
 
-            return self::FAILURE;
+                return self::FAILURE;
+            }
+
+            return $this->importFrom(RecipeSourceResolver::make($name));
         }
 
-        $source = RecipeSourceResolver::make($name);
+        $preferred = RecipeSourceResolver::preferred();
 
+        $code = $this->importFrom($preferred);
+
+        if ($code === self::SUCCESS) {
+            return $code;
+        }
+
+        $fallback = RecipeSourceResolver::fallback();
+        $this->warn('Retrying with ' . $fallback->label() . '.');
+        $this->line('');
+
+        return $this->importFrom($fallback);
+    }
+
+    private function importFrom(RecipeSource $source): int
+    {
         $this->info('Importing recipe data from: ' . $source->label());
         $this->line('');
 
@@ -56,9 +76,11 @@ class ImportRecipesCommand extends Command
         IndustryData::flush();
 
         // Stamp a fresh recipe version so cached recipes (keyed by
-        // IndustryData::recipeVersion) are invalidated on this re-import.
+        // IndustryData::recipeVersion) are invalidated on this re-import, and
+        // record which source actually filled the tables.
         try {
             \Seat\Services\Settings\Seat::set('industry_manager_sde_version', $source->version() ?: (string) time());
+            \Seat\Services\Settings\Seat::set('industry_manager_recipe_source', $source->name());
         } catch (\Throwable $e) {
             // non-fatal; caching falls back to the core SDE version
         }

@@ -40,10 +40,25 @@ class MigrationTest extends TestCase
         }
     }
 
+    public function test_effect_and_run_tables_are_created_and_dropped(): void
+    {
+        foreach (IndustryData::EFFECT_TABLES as $table) {
+            $this->assertTrue(Schema::hasTable($table), $table . ' should exist');
+        }
+
+        $this->assertTrue(Schema::hasTable('industry_manager_production_runs'));
+
+        $migration = require __DIR__ . '/../../src/Database/migrations/2026_10_04_000002_create_industry_manager_effect_and_run_tables.php';
+        $migration->down();
+
+        $this->assertFalse(Schema::hasTable(IndustryData::TABLE_EFFECTS), 'effects should be dropped');
+        $this->assertFalse(Schema::hasTable('industry_manager_production_runs'), 'runs should be dropped');
+    }
+
     public function test_no_core_sde_table_is_owned_by_the_plugin(): void
     {
         // Canonical SDE names must never be created or dropped by the plugin.
-        foreach (['industryActivity', 'industryActivityMaterials', 'planetSchematics', 'planetSchematicsTypeMap'] as $coreName) {
+        foreach (['industryActivity', 'industryActivityMaterials', 'planetSchematics', 'planetSchematicsTypeMap', 'dgmEffects', 'dgmTypeEffects'] as $coreName) {
             $this->assertFalse(Schema::hasTable($coreName), $coreName . ' must not exist');
         }
     }
