@@ -3,6 +3,7 @@
 namespace IndustryManager\Tests\Feature;
 
 use Illuminate\Support\Facades\DB;
+use IndustryManager\Helpers\AssemblyLines;
 use IndustryManager\Helpers\IndustryActivity;
 use IndustryManager\Helpers\IndustryData;
 use IndustryManager\Helpers\RigScope;
@@ -26,6 +27,8 @@ class CcpJsonlSourceTest extends TestCase
         copy(__DIR__ . '/../fixtures/blueprints.min.jsonl', $dir . '/blueprints.jsonl');
         copy(__DIR__ . '/../fixtures/planetSchematics.min.jsonl', $dir . '/planetSchematics.jsonl');
         copy(__DIR__ . '/../fixtures/dogmaEffects.min.jsonl', $dir . '/dogmaEffects.jsonl');
+        copy(__DIR__ . '/../fixtures/industryAssemblyLines.min.jsonl', $dir . '/industryAssemblyLines.jsonl');
+        copy(__DIR__ . '/../fixtures/industryInstallationTypes.min.jsonl', $dir . '/industryInstallationTypes.jsonl');
     }
 
     public function test_imports_the_dogma_effects_rig_scope_needs(): void
@@ -60,6 +63,47 @@ class CcpJsonlSourceTest extends TestCase
         $this->assertSame(1, $counts[IndustryData::TABLE_PROBABILITIES]);
         $this->assertSame(1, $counts[IndustryData::TABLE_PI_SCHEMATICS]);
         $this->assertSame(2, $counts[IndustryData::TABLE_PI_TYPEMAP]);
+    }
+
+    public function test_imports_the_structure_capability_map(): void
+    {
+        $counts = (new CcpJsonlSource(null, '3569502'))->import();
+
+        $this->assertSame(4, $counts[IndustryData::TABLE_ASSEMBLY_LINES]);
+
+        // 35899 Standup Reprocessing Facility I publishes no assembly line, so it
+        // makes nothing available and is not stored as a capability.
+        $this->assertSame(4, $counts[IndustryData::TABLE_INSTALLATIONS]);
+
+        IndustryData::flush();
+        $this->assertTrue(IndustryData::isCapabilityInstalled());
+
+        $this->assertSame([175], $this->linesFor(35878));   // Manufacturing Plant
+        $this->assertSame([176], $this->linesFor(35881));   // Capital Shipyard
+        $this->assertSame([182], $this->linesFor(45537));   // Composite Reactor
+        $this->assertSame([], $this->linesFor(35899));      // Reprocessing
+
+        // The product lists are what separate a plant from a shipyard: a strategic
+        // cruiser is on the plant's line, a capital group is only on the shipyard's.
+        $plant = AssemblyLines::decode(DB::table(IndustryData::TABLE_ASSEMBLY_LINES)
+            ->where('assemblyLineID', 175)
+            ->value('groupIDs'));
+        $shipyard = AssemblyLines::decode(DB::table(IndustryData::TABLE_ASSEMBLY_LINES)
+            ->where('assemblyLineID', 176)
+            ->value('groupIDs'));
+
+        $this->assertContains(963, $plant);
+        $this->assertNotContains(485, $plant);
+        $this->assertContains(485, $shipyard);
+
+        // A line with no product detail at all is CCP's "anything": the lab lines.
+        $research = DB::table(IndustryData::TABLE_ASSEMBLY_LINES)
+            ->where('assemblyLineID', 178)
+            ->first();
+
+        $this->assertSame(IndustryActivity::RESEARCH_TE, (int) $research->activityID);
+        $this->assertSame([], AssemblyLines::decode($research->groupIDs));
+        $this->assertSame([], AssemblyLines::decode($research->categoryIDs));
     }
 
     public function test_the_build_number_is_the_one_ccp_publishes(): void
@@ -106,5 +150,19 @@ class CcpJsonlSourceTest extends TestCase
         $this->assertSame(600, $recipe['time']);
         $this->assertSame(38, $recipe['materials'][0]['type_id']);
         $this->assertSame(86, $recipe['materials'][0]['base_quantity']);
+    }
+
+    /**
+     * The assembly lines a fitted service module makes available.
+     *
+     * @return array<int, int>
+     */
+    private function linesFor(int $typeId): array
+    {
+        $stored = DB::table(IndustryData::TABLE_INSTALLATIONS)
+            ->where('typeID', $typeId)
+            ->value('assemblyLineIDs');
+
+        return AssemblyLines::decode($stored);
     }
 }

@@ -177,11 +177,32 @@ class CcpJsonlSource implements RecipeSource
 
         $this->version = $current;
 
-        if ($diskBuild === $current) {
+        if ($diskBuild === $current && self::isComplete($onDisk)) {
             return $onDisk;
         }
 
         return $this->downloadAndExtract($current);
+    }
+
+    /**
+     * Does the on-disk set cover everything this plugin reads?
+     *
+     * Reuse is all-or-nothing. SeAT core extracts only the files core itself
+     * imports, so a build directory that satisfies core can still be missing the
+     * capability files - reusing it would import the recipes and leave the
+     * structure-capability tables silently empty.
+     *
+     * @param  array<string, ?string>  $onDisk
+     */
+    public static function isComplete(array $onDisk): bool
+    {
+        foreach (self::ARCHIVE_FILES as $basename) {
+            if (empty($onDisk[$basename])) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
