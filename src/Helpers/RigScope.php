@@ -165,11 +165,19 @@ final class RigScope
      */
     public static function multiplierAttributes(int $activityId, string $scope): ?array
     {
-        if ($activityId !== IndustryActivity::MANUFACTURING) {
-            return self::ACTIVITY_MULTIPLIERS[$activityId] ?? null;
+        // Manufacturing and reactions are both chosen by what is produced: the
+        // game reads the multiplier attribute of the product's scope. Reactions
+        // have their own set per reaction family (rigReactionCompMatBonus writes
+        // 2718, rigReactionBioTimeBonus writes 2719), so a manufacturing rig for
+        // one scope must not carry over to a reaction job.
+        $byScope = $activityId === IndustryActivity::MANUFACTURING
+            || $activityId === IndustryActivity::REACTIONS;
+
+        if ($byScope) {
+            return self::MULTIPLIERS[$scope] ?? null;
         }
 
-        return self::MULTIPLIERS[$scope] ?? null;
+        return self::ACTIVITY_MULTIPLIERS[$activityId] ?? null;
     }
 
     /**
