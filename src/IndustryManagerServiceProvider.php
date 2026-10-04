@@ -31,11 +31,9 @@ class IndustryManagerServiceProvider extends AbstractSeatPlugin
 
         // Command registration uses the dual-path pattern from SM
         // (`commands()` for CLI bootstrap, `app->resolving(Kernel)` as the
-        // resolve-time fallback for web-invoked `Artisan::call(...)`). The
-        // command list is empty at scaffold time; populate as features land.
+        // resolve-time fallback for web-invoked `Artisan::call(...)`).
         $imCommands = [
-            // SDE import command removed for now (see register() note). Recipe
-            // tables are consumed when present but nothing imports them yet.
+            \IndustryManager\Console\Commands\ImportRecipesCommand::class,
         ];
 
         if (! empty($imCommands)) {
@@ -76,17 +74,15 @@ class IndustryManagerServiceProvider extends AbstractSeatPlugin
 
         $this->mergeConfigFrom(__DIR__ . '/Config/industry-manager.config.php', 'industry-manager');
 
-        // NOTE on recipe data: the industry + planetary recipe tables
-        // (industryActivity* / planetSchematics*) are NOT part of SeAT's core
-        // SDE, and SDE import has been REMOVED for now. The consuming code
-        // (ProductionCalculator, PiSchematicService, the SDE models) stays —
-        // it lights up if/when those tables are populated. IndustryData::
-        // isInstalled()/isPiInstalled() now check for actual ROWS (not just
-        // table existence), so every recipe-powered page degrades to a neutral
-        // "recipe data not loaded" notice until then. Everything that reads
-        // SeAT's live synced tables (blueprints, jobs, structures, planetary
-        // colonies) works regardless. A direct importer into plugin-owned
-        // tables can be re-introduced later.
+        // NOTE on recipe data: the recipe tables are plugin-owned
+        // (`industry_manager_*`, created by the plugin's own migration) and are
+        // filled by `industry-manager:import-recipes`. That command auto-selects
+        // its source: CCP's official JSONL SDE when SeAT core can provide it,
+        // otherwise Fuzzwork's per-table gzip dumps — the path stock SeAT v5
+        // uses today. Neither writes anything outside the plugin's tables, so
+        // the plugin stays removable. IndustryData::isInstalled()/
+        // isPiInstalled() check for actual ROWS, so every recipe-powered page
+        // degrades to a neutral notice until the import runs.
     }
 
     public function getName(): string

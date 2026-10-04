@@ -28,10 +28,12 @@ use IndustryManager\Helpers\IndustryData;
  *     adjusted  = baseQuantity * runs * modifier
  *     required  = max(runs, ceil(round(adjusted, 2)))
  * The max(runs, …) floor enforces "at least 1 unit per run per material".
- * round-to-2 before ceil matches the in-game rounding. structure/rig modifiers
- * default to 1.0 in v1 (no pricing/structure bonus yet); the signature already
- * accepts them so the Industry Trace tab and v1.1 structure picker can pass
- * real values without a calculator rewrite.
+ * round-to-2 before ceil matches the in-game rounding.
+ *
+ * structureModifier and rigModifier default to 1.0 and are supplied by
+ * StructureIndustryRigs when a structure is chosen — see the calculator's
+ * `structure` parameter. Skills affect time only, never quantities, so they are
+ * deliberately not part of this formula.
  */
 class ProductionCalculator
 {
@@ -111,7 +113,8 @@ class ProductionCalculator
      * Build a recursive production tree with ME/runs applied, plus a rolled-up
      * base-material total across the whole tree.
      *
-     * Options: me (0-10), runs, max_depth, sub_component_me, activity_id.
+     * Options: me (0-10), runs, max_depth, sub_component_me, activity_id,
+     * structure_modifier, rig_modifier.
      *
      * @return array{root:array, base_materials:array, assumptions:array}|null
      */
@@ -126,13 +129,15 @@ class ProductionCalculator
         $maxDepth = (int) ($opts['max_depth'] ?? self::DEFAULT_MAX_DEPTH);
         $subMe = (float) ($opts['sub_component_me'] ?? 0);
         $activityId = (int) ($opts['activity_id'] ?? IndustryActivity::MANUFACTURING);
+        $structureModifier = (float) ($opts['structure_modifier'] ?? 1.0);
+        $rigModifier = (float) ($opts['rig_modifier'] ?? 1.0);
 
         if ($this->recipe($blueprintTypeId, $activityId) === null) {
             return null;
         }
 
         $baseTotals = [];
-        $root = $this->expand($blueprintTypeId, $activityId, $runs, $me, $subMe, $maxDepth, 0, [], $baseTotals);
+        $root = $this->expand($blueprintTypeId, $activityId, $runs, $me, $subMe, $maxDepth, 0, [], $baseTotals, $structureModifier, $rigModifier);
 
         $baseList = array_values($baseTotals);
         usort($baseList, fn ($a, $b) => strcmp($a['name'], $b['name']));
@@ -146,6 +151,8 @@ class ProductionCalculator
                 'sub_component_me' => $subMe,
                 'max_depth' => $maxDepth,
                 'activity_id' => $activityId,
+                'structure_modifier' => $structureModifier,
+                'rig_modifier' => $rigModifier,
             ],
         ];
     }
@@ -157,7 +164,7 @@ class ProductionCalculator
      *
      * @return array{recipe:array, rows:array, me:int, runs:int}|null
      */
-    public function trace(int $blueprintTypeId, int $me, int $runs, int $activityId = IndustryActivity::MANUFACTURING): ?array
+    public function trace(int $blueprintTypeId, int $me, int $runs, int $activityId = IndustryActivity::MANUFACTURING, float $structureModifier = 1.0, float $rigModifier = 1.0): ?array
     {
         if (! IndustryData::isInstalled()) {
             return null;
@@ -170,8 +177,6 @@ class ProductionCalculator
 
         $runs = max(1, $runs);
         $meFraction = max(0, min(10, $me)) / 100.0;
-        $structureModifier = 1.0; // v1: no structure bonus yet
-        $rigModifier = 1.0;       // v1: no rig bonus yet
 
         $rows = [];
         foreach ($recipe['materials'] as $mat) {
@@ -285,7 +290,9 @@ class ProductionCalculator
         int $maxDepth,
         int $depth,
         array $path,
-        array &$baseTotals
+        array &$baseTotals,
+        float $structureModifier = 1.0,
+        float $rigModifier = 1.0
     ): array {
         $recipe = $this->recipe($bp, $activityId);
         $meFraction = $me / 100.0;
@@ -299,11 +306,13 @@ class ProductionCalculator
             'runs' => $runs,
             'time' => $recipe['time'] ?? 0,
             'depth' => $depth,
+            'structure_modifier' => $structureModifier,
+            'rig_modifier' => $rigModifier,
             'materials' => [],
         ];
 
         foreach ($recipe['materials'] as $mat) {
-            $qty = $this->adjustedQuantity($mat['base_quantity'], $runs, $meFraction);
+            $qty = $this->adjustedQuantity($mat['base_quantity'], $runs, $meFraction, $structureModifier, $rigModifier);
 
             $entry = [
                 'type_id' => $mat['type_id'],
@@ -323,6 +332,9 @@ class ProductionCalculator
                 $subRuns = (int) ceil($qty / $perRun);
 
                 $entry['sub_runs'] = $subRuns;
+                // Sub-components inherit the same structure/rig modifiers unless
+                // a per-level structure is chosen later; that is the documented
+                // assumption, and the trace tab shows it.
                 $entry['children'] = $this->expand(
                     $mat['buildable_blueprint'],
                     IndustryActivity::MANUFACTURING,
@@ -332,7 +344,9 @@ class ProductionCalculator
                     $maxDepth,
                     $depth + 1,
                     $childPath,
-                    $baseTotals
+                    $baseTotals,
+                    $structureModifier,
+                    $rigModifier
                 );
             } else {
                 // Leaf — acquire as-is. Roll into the base-material total.

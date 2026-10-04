@@ -6,6 +6,8 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use IndustryManager\Helpers\IndustryActivity;
 use IndustryManager\Helpers\IndustryData;
+use IndustryManager\Services\RecipeSources\CcpJsonlSource;
+use IndustryManager\Services\RecipeSources\RecipeSourceResolver;
 
 /**
  * StatusService — system/health facts about the plugin's data, reused by the
@@ -34,7 +36,11 @@ class StatusService
 
         return [
             'installed' => IndustryData::isInstalled(),
-            'version' => $this->sdeVersion(),
+            'version' => IndustryData::recipeVersion(),
+            'core_version' => $this->sdeVersion(),
+            'source' => RecipeSourceResolver::preferredName(),
+            'source_label' => RecipeSourceResolver::preferred()->label(),
+            'ccp_available' => CcpJsonlSource::available(),
             'tables' => $tables,
         ];
     }
@@ -51,7 +57,7 @@ class StatusService
             return ['manufacturing_blueprints' => 0, 'reaction_formulas' => 0, 'material_rows' => 0];
         }
 
-        return Cache::remember('im:coverage:' . ($this->sdeVersion() ?? 'x'), self::COUNT_TTL, function () {
+        return Cache::remember('im:coverage:' . IndustryData::recipeVersion(), self::COUNT_TTL, function () {
             $mfg = (int) DB::table(IndustryData::TABLE_PRODUCTS)
                 ->where('activityID', IndustryActivity::MANUFACTURING)->distinct()->count('typeID');
             $rx = (int) DB::table(IndustryData::TABLE_PRODUCTS)
@@ -88,7 +94,7 @@ class StatusService
 
     private function countTable(string $table): int
     {
-        return Cache::remember('im:rowcount:' . $table . ':' . ($this->sdeVersion() ?? 'x'), self::COUNT_TTL, function () use ($table) {
+        return Cache::remember('im:rowcount:' . $table . ':' . IndustryData::recipeVersion(), self::COUNT_TTL, function () use ($table) {
             try {
                 return (int) DB::table($table)->count();
             } catch (\Throwable $e) {

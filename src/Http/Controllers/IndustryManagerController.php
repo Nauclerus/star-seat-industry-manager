@@ -9,7 +9,6 @@ use IndustryManager\Helpers\AttributeDiscovery;
 use IndustryManager\Helpers\Decryptor;
 use IndustryManager\Helpers\IndustryActivity;
 use IndustryManager\Helpers\IndustryData;
-use IndustryManager\Helpers\RigAttributes;
 use IndustryManager\Services\BlueprintRepository;
 use IndustryManager\Services\CharacterResolver;
 use IndustryManager\Services\InventionCalculator;
@@ -17,6 +16,7 @@ use IndustryManager\Services\JobsService;
 use IndustryManager\Services\ProductionCalculator;
 use IndustryManager\Services\ReactionService;
 use IndustryManager\Services\StatusService;
+use IndustryManager\Services\StructureIndustryRigs;
 use IndustryManager\Services\StructureService;
 
 /**
@@ -90,10 +90,11 @@ class IndustryManagerController extends Controller
     /**
      * Production calculator + tree visualizer.
      *
-     * Query params: bp (blueprint type id), me (0-10), runs, sub_me, activity.
+     * Query params: bp (blueprint type id), me (0-10), runs, sub_me, activity,
+     * structure (a structure id whose fitted rigs are applied).
      * Without bp, shows the picker (the user's blueprints) and an empty state.
      */
-    public function calculator(Request $request, BlueprintRepository $blueprints, ProductionCalculator $calc)
+    public function calculator(Request $request, BlueprintRepository $blueprints, ProductionCalculator $calc, StructureService $structures)
     {
         $sdeReady = IndustryData::isInstalled();
 
@@ -107,6 +108,10 @@ class IndustryManagerController extends Controller
         $me = max(0, min(10, $me));
         $subMe = max(0, min(10, $subMe));
         $runs = max(1, min(100000, $runs));
+
+        // A chosen structure must belong to a corporation this user may see.
+        $structureId = ctype_digit((string) $request->query('structure')) ? (int) $request->query('structure') : null;
+        $fit = $structureId ? $structures->fitForStructure($structureId) : null;
 
         $tree = null;
         $recipe = null;
@@ -123,6 +128,7 @@ class IndustryManagerController extends Controller
                     'runs' => $runs,
                     'sub_component_me' => $subMe,
                     'activity_id' => $activity,
+                    'rig_modifier' => $fit ? StructureIndustryRigs::materialModifier($fit) : 1.0,
                 ]);
 
                 if (! empty($recipe['product_type_id'])) {
@@ -161,6 +167,8 @@ class IndustryManagerController extends Controller
             'productName' => $productName,
             'ownedMeOptions' => $ownedMeOptions,
             'picker' => $picker,
+            'structures' => $structures->forUser(),
+            'fit' => $fit,
         ]);
     }
 
@@ -178,7 +186,6 @@ class IndustryManagerController extends Controller
     {
         return view('industry-manager::structures.index', [
             'structures' => $structures->forUser(),
-            'rigsCalibrated' => RigAttributes::isConfigured(),
         ]);
     }
 
@@ -269,7 +276,7 @@ class IndustryManagerController extends Controller
      * Diagnostic page — admin-only, tabbed:
      *   Health Checks (default) / Data Integrity / Industry Trace / Attribute Discovery
      */
-    public function diagnostic(Request $request, StatusService $status, ProductionCalculator $calc)
+    public function diagnostic(Request $request, StatusService $status, ProductionCalculator $calc, StructureService $structures)
     {
         // --- Health / Data Integrity ---
         $sde = $status->sdeStatus();
@@ -280,9 +287,21 @@ class IndustryManagerController extends Controller
         $traceBp = $request->query('trace_bp');
         $traceMe = max(0, min(10, (int) $request->query('trace_me', 0)));
         $traceRuns = max(1, (int) $request->query('trace_runs', 1));
+        $traceStructure = ctype_digit((string) $request->query('trace_structure'))
+            ? (int) $request->query('trace_structure')
+            : null;
+        $traceFit = $traceStructure ? $structures->fitForStructure($traceStructure) : null;
         $trace = null;
+
         if (IndustryData::isInstalled() && $traceBp !== null && ctype_digit((string) $traceBp)) {
-            $trace = $calc->trace((int) $traceBp, $traceMe, $traceRuns);
+            $trace = $calc->trace(
+                (int) $traceBp,
+                $traceMe,
+                $traceRuns,
+                IndustryActivity::MANUFACTURING,
+                1.0,
+                $traceFit ? StructureIndustryRigs::materialModifier($traceFit) : 1.0
+            );
         }
 
         // --- Attribute Discovery (Sprint 0 tool) ---
@@ -316,6 +335,8 @@ class IndustryManagerController extends Controller
             'traceBp' => $traceBp,
             'traceMe' => $traceMe,
             'traceRuns' => $traceRuns,
+            'traceStructure' => $traceStructure,
+            'traceFit' => $traceFit,
             'error' => $error,
             'categories' => $categories,
             'rigGroups' => $rigGroups,

@@ -55,6 +55,23 @@
                             </button>
                         </div>
                     </div>
+
+                    <div class="form-row align-items-end">
+                        <div class="form-group col-md-6">
+                            <label>Structure (applies its fitted rig bonuses)</label>
+                            <select name="structure" class="form-control">
+                                <option value="">No structure — no rig bonus applied</option>
+                                @foreach($structures as $st)
+                                    <option value="{{ $st['structure_id'] }}" {{ (int) request('structure') === $st['structure_id'] ? 'selected' : '' }}>
+                                        {{ $st['name'] }} — {{ $st['security_class'] }} (×{{ $st['security_multiplier'] }})
+                                    </option>
+                                @endforeach
+                            </select>
+                            <small class="im-text-muted">
+                                Only the ME rig is applied to material quantities. TE and cost affect time and ISK, not the material list.
+                            </small>
+                        </div>
+                    </div>
                     @if(!empty($ownedMeOptions))
                         <div class="im-owned-me">
                             <span class="im-text-muted">You own this blueprint at ME:</span>
@@ -67,6 +84,38 @@
                 </form>
             </div>
         </div>
+
+        @if($fit)
+            <div class="card card-dark">
+                <div class="card-header">
+                    <h3 class="card-title mb-0"><i class="fas fa-building mr-2"></i> Applied fit: {{ $fit['name'] }}</h3>
+                </div>
+                <div class="card-body">
+                    <p class="im-text-muted">
+                        {{ $fit['type_name'] }} in {{ $fit['system_name'] }} —
+                        {{ $fit['security_class'] }}{{ $fit['security'] !== null ? ' (' . number_format($fit['security'], 1) . ')' : '' }},
+                        multiplier ×{{ $fit['multiplier'] }}{{ $fit['source'] === 'fitted' ? ' (read from the rig)' : ' (fallback table)' }}.
+                    </p>
+
+                    @if(empty($fit['me_bonus']))
+                        <p class="im-text-muted">No material-efficiency rig fitted, so the material modifier stays 1.0.</p>
+                    @else
+                        <p>
+                            Material modifier applied:
+                            <code>×{{ number_format(1 - $fit['me_bonus'] / 100, 4) }}</code>
+                            ({{ $fit['me_bonus'] }}% ME bonus).
+                        </p>
+                    @endif
+
+                    @if($fit['te_bonus'] > 0 || $fit['cost_bonus'] > 0)
+                        <p class="im-text-muted">
+                            @if($fit['te_bonus'] > 0)TE rig {{ $fit['te_bonus'] }}% — affects duration, not quantities.@endif
+                            @if($fit['cost_bonus'] > 0) {{ $fit['cost_bonus'] }}% job cost bonus (ISK, v1.1).@endif
+                        </p>
+                    @endif
+                </div>
+            </div>
+        @endif
 
         @if($sdeReady && $bp && !$recipe)
             <div class="alert alert-warning">

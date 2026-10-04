@@ -11,20 +11,16 @@
 <div class="industry-manager-wrapper">
     <div class="industry-manager">
 
-        @if(!$rigsCalibrated && auth()->user() && auth()->user()->can('industry-manager.admin'))
-            <div class="im-sde-notice" style="border-left-color: var(--im-info); background-color: rgba(23,162,184,0.08); border-color: rgba(23,162,184,0.25);">
-                <h4 style="color: var(--im-info);"><i class="fas fa-screwdriver-wrench mr-2"></i> Rig bonus magnitudes not calibrated yet</h4>
-                <p>Structures and their fitted rigs are shown below, along with the security-class multiplier. The exact ME/TE/cost <strong>bonus percentages</strong> need the rig dogma attribute IDs, which differ per SDE version and aren't human-named in SeAT.</p>
-                <p class="im-text-muted">Admin: open <a href="{{ route('industry-manager.diagnostic') }}">Diagnostic &rarr; Attribute Discovery</a>, identify the ME/TE/cost attributes (Step 5), and they get wired into <code>RigAttributes</code>. Until then this page shows everything that's knowable without them.</p>
-            </div>
-        @endif
-
         <div class="card card-dark">
             <div class="card-header">
                 <h3 class="card-title mb-0"><i class="fas fa-building mr-2"></i> Industry Structures</h3>
             </div>
             <div class="card-body">
-                <p class="im-text-muted">Your corporation's Engineering Complexes and Refineries, with fitted rigs. The security multiplier (high-sec 1.0&times; / low-sec 1.9&times; / null&amp;WH 2.1&times;) scales every rig's bonus.</p>
+                <p class="im-text-muted">
+                    Your corporation's Engineering Complexes and Refineries, with fitted rigs. Bonuses are read from the rig's own dogma
+                    attributes (2593 TE / 2594 ME / 2595 job cost) and scaled by the security multiplier stored on that rig
+                    (2355 / 2356 / 2357), which is why the same T1 ME rig reads 2% in high-sec, 3.8% in low-sec and 4.2% in null-sec.
+                </p>
 
                 @if($structures->isEmpty())
                     <div class="im-empty-state">
@@ -60,14 +56,35 @@
                                         @foreach($st['rigs'] as $rig)
                                             <div class="im-rig-row">
                                                 <span class="im-rig-name">{{ $rig['name'] }}</span>
-                                                @if(isset($rig['me_bonus']) && $rig['me_bonus'] !== null)
-                                                    <span class="im-rig-bonus" title="Material Efficiency bonus (security-adjusted)">-{{ $rig['me_bonus'] }}% ME</span>
-                                                @endif
-                                                @if(isset($rig['te_bonus']) && $rig['te_bonus'] !== null)
-                                                    <span class="im-rig-bonus im-rig-te" title="Time Efficiency bonus (security-adjusted)">-{{ $rig['te_bonus'] }}% TE</span>
+                                                @if($rig['bonus'] === 'me')
+                                                    <span class="im-rig-bonus" title="Material Efficiency bonus, security-adjusted">
+                                                        -{{ $rig['effective'] }}% ME
+                                                    </span>
+                                                    <span class="im-text-muted">{{ $rig['raw'] }} × {{ $rig['multiplier'] }}</span>
+                                                @elseif($rig['bonus'] === 'te')
+                                                    <span class="im-rig-bonus im-rig-te" title="Time Efficiency bonus, security-adjusted">
+                                                        -{{ $rig['effective'] }}% TE
+                                                    </span>
+                                                    <span class="im-text-muted">{{ $rig['raw'] }} × {{ $rig['multiplier'] }}</span>
+                                                @elseif($rig['bonus'] === 'cost')
+                                                    <span class="im-rig-bonus" title="Job cost bonus, security-adjusted">
+                                                        -{{ $rig['effective'] }}% cost
+                                                    </span>
+                                                    <span class="im-text-muted">{{ $rig['raw'] }} × {{ $rig['multiplier'] }}</span>
+                                                @else
+                                                    <span class="im-text-muted">no bonus attribute</span>
                                                 @endif
                                             </div>
                                         @endforeach
+
+                                        @if($st['me_bonus'] > 0 || $st['te_bonus'] > 0 || $st['cost_bonus'] > 0)
+                                            <div class="im-rig-row im-rig-effective">
+                                                <span class="im-rig-name">Effective for this fit</span>
+                                                @if($st['me_bonus'] > 0)<span class="im-rig-bonus">-{{ $st['me_bonus'] }}% ME</span>@endif
+                                                @if($st['te_bonus'] > 0)<span class="im-rig-bonus im-rig-te">-{{ $st['te_bonus'] }}% TE</span>@endif
+                                                @if($st['cost_bonus'] > 0)<span class="im-rig-bonus">-{{ $st['cost_bonus'] }}% cost</span>@endif
+                                            </div>
+                                        @endif
                                     @endif
                                 </div>
                             </div>

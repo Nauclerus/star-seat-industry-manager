@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class PiProject extends Model
 {
-    protected $table = 'im_pi_projects';
+    protected $table = 'industry_manager_pi_projects';
 
     protected $fillable = ['user_id', 'name', 'description'];
 

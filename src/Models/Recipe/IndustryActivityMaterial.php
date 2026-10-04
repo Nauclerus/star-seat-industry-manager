@@ -1,12 +1,12 @@
 <?php
 
-namespace IndustryManager\Models\Sde;
+namespace IndustryManager\Models\Recipe;
 
 use Illuminate\Database\Eloquent\Model;
 use Seat\Eveapi\Models\Sde\InvType;
 
 /**
- * industryActivityMaterials — input materials per (blueprint, activity).
+ * industry_manager_materials — input materials per (blueprint, activity), plugin-owned.
  *
  * Columns (flattened from CCP blueprints.jsonl): typeID, activityID, materialTypeID, quantity
  *
@@ -20,7 +20,7 @@ use Seat\Eveapi\Models\Sde\InvType;
  */
 class IndustryActivityMaterial extends Model
 {
-    protected $table = 'industryActivityMaterials';
+    protected $table = 'industry_manager_materials';
 
     public $timestamps = false;
 

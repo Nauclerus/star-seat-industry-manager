@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class PiProjectPlanet extends Model
 {
-    protected $table = 'im_pi_project_planets';
+    protected $table = 'industry_manager_pi_project_planets';
 
     protected $fillable = ['project_id', 'character_id', 'planet_id'];
 

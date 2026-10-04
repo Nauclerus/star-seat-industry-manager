@@ -1,6 +1,6 @@
 <?php
 
-namespace IndustryManager\Models\Sde;
+namespace IndustryManager\Models\Recipe;
 
 use Illuminate\Database\Eloquent\Model;
 use Seat\Eveapi\Models\Sde\InvType;
@@ -15,7 +15,7 @@ use Seat\Eveapi\Models\Sde\InvType;
  */
 class IndustryActivitySkill extends Model
 {
-    protected $table = 'industryActivitySkills';
+    protected $table = 'industry_manager_skills';
 
     public $timestamps = false;
 

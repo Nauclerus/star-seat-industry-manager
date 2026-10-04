@@ -11,7 +11,7 @@ use Seat\Eveapi\Models\Sde\InvType;
  */
 class PiProjectObjective extends Model
 {
-    protected $table = 'im_pi_project_objectives';
+    protected $table = 'industry_manager_pi_project_objectives';
 
     protected $fillable = ['project_id', 'type_id', 'target_quantity'];
 

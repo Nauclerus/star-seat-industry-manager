@@ -27,12 +27,19 @@
                 </ul>
 
                 <h4>How material quantities are calculated</h4>
-                <p class="im-text-muted">Per material, Industry Manager uses EVE's formula: <code>required = max(runs, ceil(round(baseQuantity &times; runs &times; (1 - ME/100), 2)))</code>. Deeper components in the tree use the "Sub-build ME" you choose (default 0). Structure and rig bonuses are not yet applied in v1.0.0 (see below).</p>
+                <p class="im-text-muted">Per material, Industry Manager uses EVE's formula: <code>required = max(runs, ceil(round(baseQuantity &times; runs &times; (1 - ME/100) &times; rigModifier, 2)))</code>. Deeper components in the tree use the "Sub-build ME" you choose (default 0). <code>rigModifier</code> is <code>1 - effective ME bonus / 100</code> for the structure you pick, and 1.0 when no structure is chosen.</p>
+
+                <h4>Structures &amp; rig bonuses</h4>
+                <p class="im-text-muted">
+                    Bonuses are read from the fitted rig's own dogma attributes — 2593 (TE), 2594 (ME), 2595 (job cost) — and scaled by the
+                    security multiplier stored on that rig (2355 high-sec, 2356 low-sec, 2357 null/Wormhole). Only one of the three is ever
+                    populated on a given rig. Skills affect duration and eligibility only, never material quantities.
+                </p>
 
                 <h4>Coming next</h4>
                 <ul class="im-text-muted">
-                    <li><strong>Structures &amp; rig bonuses</strong> — your corporation's engineering complexes, their fitted rigs, and the ME/TE/cost bonuses they grant (with the security-class multiplier).</li>
-                    <li><strong>Invention &amp; Reactions</strong> — T2 invention chains and reaction formulas.</li>
+                    <li><strong>Best structure ranking</strong> — needs the rig's activity/size restriction confirmed, so the picker can tell whether a given ME rig applies to a given blueprint's category.</li>
+                    <li><strong>Recipe data</strong> — the calculator, invention, reactions and PI tree need EVE's industry recipe data, which is not part of SeAT's core SDE. See Settings for the current source.</li>
                     <li><strong>ISK valuation</strong> — material cost, product value, and build-vs-buy, via Manager Core pricing (v1.1).</li>
                 </ul>
 

@@ -98,7 +98,11 @@
                             <h4>When to use</h4>
                             <p>When a calculator result disagrees with the game. Find the material whose <code>final</code> differs and the step where it diverges.</p>
                             <h4>Heads up</h4>
-                            <p>Structure and rig modifiers are 1.0 in this version (not yet calibrated), so traces match a structure with no industry rigs.</p>
+                            <p>
+                                The rig modifier comes from the fitted rig's own attributes (2593 TE / 2594 ME / 2595 cost) scaled by the
+                                security multiplier stored on that rig. Leave the structure blank to trace an unrigged fit, which is the case
+                                the in-game window is easiest to reconcile against.
+                            </p>
                         </div>
 
                         <form method="GET" action="{{ route('industry-manager.diagnostic') }}" class="im-calc-form form-row align-items-end">
@@ -106,8 +110,18 @@
                             <div class="form-group col-md-4"><label>Blueprint type ID</label><input type="number" name="trace_bp" class="form-control" value="{{ $traceBp }}"></div>
                             <div class="form-group col-md-2"><label>ME</label><input type="number" name="trace_me" class="form-control" value="{{ $traceMe }}" min="0" max="10"></div>
                             <div class="form-group col-md-2"><label>Runs</label><input type="number" name="trace_runs" class="form-control" value="{{ $traceRuns }}" min="1"></div>
+                            <div class="form-group col-md-2"><label>Structure ID</label><input type="number" name="trace_structure" class="form-control" value="{{ $traceStructure }}" placeholder="optional"></div>
                             <div class="form-group col-md-2"><button class="btn btn-im-primary btn-block" type="submit">Trace</button></div>
                         </form>
+
+                        @if($traceFit)
+                            <p class="im-text-muted">
+                                Rig modifier applied from {{ $traceFit['name'] }}:
+                                {{ $traceFit['me_bonus'] }}% ME bonus &rarr;
+                                <code>×{{ number_format(1 - $traceFit['me_bonus'] / 100, 4) }}</code>
+                                ({{ $traceFit['security_class'] }}, ×{{ $traceFit['multiplier'] }}).
+                            </p>
+                        @endif
 
                         @if($trace)
                             <p class="im-text-muted">Tracing <strong>{{ $trace['recipe']['blueprint_name'] }}</strong> at ME {{ $trace['me'] }}, {{ $trace['runs'] }} run(s). Modifier = (1 - ME/100) × structure({{ $trace['structure_modifier'] }}) × rig({{ $trace['rig_modifier'] }}).</p>
