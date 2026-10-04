@@ -194,6 +194,55 @@ class StructureIndustryRigsTest extends TestCase
         }
     }
 
+    public function test_laboratory_rigs_apply_to_the_activity_their_effects_name(): void
+    {
+        // L-Set Blueprint Copy Optimization I: effects 6836 and 6837 write the
+        // copying pair 2569/2570 from the rig's own 2595 (-10) and 2593 (-20), and
+        // it carries no material bonus at all (2594 is present and zero).
+        $fit = $this->fit([
+            $this->rig(43729, 'L-Set Blueprint Copy Optimization I', ['te' => -20.0, 'cost' => -10.0, 'me' => 0.0], [2569, 2570]),
+        ]);
+
+        $copy = StructureIndustryRigs::bonusesFor($fit, IndustryActivity::COPYING, RigScope::ALL_SHIP);
+
+        $this->assertSame(42.0, $copy['te']);
+        $this->assertSame(21.0, $copy['cost']);
+        $this->assertSame(0.0, $copy['me']);
+        $this->assertSame('scope', $copy['source']);
+        $this->assertSame(43729, $copy['rig']['type_id']);
+
+        // It is not a manufacturing rig. Manufacturing reads the multiplier pair of
+        // the product's scope, and this rig writes neither side of it — so a ship
+        // build in the same structure takes nothing from it.
+        $mfg = StructureIndustryRigs::bonusesFor($fit, IndustryActivity::MANUFACTURING, RigScope::ALL_SHIP);
+
+        $this->assertSame(0.0, $mfg['te']);
+        $this->assertSame('uncovered', $mfg['source']);
+    }
+
+    public function test_a_laboratory_rig_covers_the_activities_it_has_effects_for(): void
+    {
+        // XL-Set Laboratory Optimization I has effects 6830-6835: invention and both
+        // research types, cost and time. Not copying — that rig has no copy effect,
+        // and copying keeps its own rig.
+        $fit = $this->fit([
+            $this->rig(37182, 'XL-Set Laboratory Optimization I', ['te' => -24.0, 'cost' => -12.0, 'me' => 0.0], [2563, 2564, 2565, 2566, 2567, 2568]),
+        ]);
+
+        foreach ([IndustryActivity::INVENTION, IndustryActivity::RESEARCH_ME, IndustryActivity::RESEARCH_TE] as $activityId) {
+            $job = StructureIndustryRigs::bonusesFor($fit, $activityId, RigScope::ALL_SHIP);
+
+            $this->assertSame(50.4, $job['te'], (string) $activityId);
+            $this->assertSame(25.2, $job['cost'], (string) $activityId);
+            $this->assertSame('scope', $job['source'], (string) $activityId);
+        }
+
+        $copy = StructureIndustryRigs::bonusesFor($fit, IndustryActivity::COPYING, RigScope::ALL_SHIP);
+
+        $this->assertSame(0.0, $copy['te']);
+        $this->assertSame('uncovered', $copy['source']);
+    }
+
     public function test_modifiers_accept_a_scope_and_default_to_the_fit_wide_value(): void
     {
         $fit = $this->fit([
