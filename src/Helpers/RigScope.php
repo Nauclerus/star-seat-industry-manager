@@ -20,11 +20,13 @@ namespace IndustryManager\Helpers;
  * set — which is also why rigs do not stack: only one rig can write a given
  * attribute.
  *
- * What the SDE does NOT contain is the reverse join: which blueprint products
- * belong to a scope. CCP publishes the scope names but not the membership, so the
- * product side is game logic. The maps below are the curated part, kept as group
- * IDs (stable SDE constants) so they are auditable and testable rather than
- * string-parsed.
+ * What used to be the curated part — which products belong to a scope — is now
+ * published too. `industryModifierSources.jsonl` maps each rig type to the
+ * activity it modifies, the multiplier attribute it writes, and a `filterID`;
+ * `industryTargetFilters.jsonl` resolves that filterID to the inventory groups
+ * and categories it covers. So the maps below are a copy of CCP's filters rather
+ * than an interpretation of them, and each entry names the filterID it came from.
+ * Group IDs are stable SDE constants, which keeps them auditable and testable.
  */
 final class RigScope
 {
@@ -103,37 +105,65 @@ final class RigScope
     ];
 
     /**
-     * Curated product-side map: inventory group => scope token.
+     * Product group => scope token.
      *
-     * This is the part CCP does not publish. Group IDs are stable SDE constants.
-     * Verified against EVE Ref's per-rig "affected groups" lists on 2026-10-04.
+     * Copied from CCP's industryTargetFilters.jsonl on SDE build 3569502; each
+     * block names the filterID that industryModifierSources.jsonl attaches to the
+     * matching multiplier attribute.
      */
     public const GROUP_SCOPES = [
-        // Non-capital components are all covered by the advanced component scope.
+        // filterID 14 "Components" -> 2557/2558.
         332 => self::ADV_COMPONENT,   // Tool
         334 => self::ADV_COMPONENT,   // Construction Components
         716 => self::ADV_COMPONENT,   // Data Interfaces
         964 => self::ADV_COMPONENT,   // Hybrid Tech Components
 
+        // filterID 13 "Capital Components" -> 2559/2560.
         873 => self::BAS_CAP_COMP,    // Capital Construction Components
+
+        // filterID 15 "Advanced Capital Components" -> 2658/2659.
         913 => self::ADV_CAP_COMP,    // Advanced Capital Construction Components
 
+        // filterID 12 "Structures" -> 2561/2562.
         536 => self::STRUCTURE,       // Structure Components
+        1136 => self::STRUCTURE,      // Fuel Block
+        4736 => self::STRUCTURE,      // Skyhook
 
-        // Reaction groups — data-driven, listed here for completeness.
-        436 => self::REACTION_CHEMICAL, // Simple Reaction
-        484 => self::REACTION_CHEMICAL, // Complex Reactions
-        661 => self::REACTION_BIO,      // Simple Biochemical Reactions
-        662 => self::REACTION_BIO,      // Complex Biochemical Reactions
-        977 => self::REACTION_HYBRID,   // Hybrid Reactions
+        // filterID 2 "Equipment" -> 2538/2539.
+        12 => self::EQUIPMENT,        // Cargo Container
+        340 => self::EQUIPMENT,       // Secure Cargo Container
+        448 => self::EQUIPMENT,       // Audit Log Secure Container
+        649 => self::EQUIPMENT,       // Freight Container
+
+        // filterID 18 "Composite Reactions" -> 2718/2717.
+        428 => self::REACTION_CHEMICAL,   // Intermediate Materials
+        429 => self::REACTION_CHEMICAL,   // Composite
+        4932 => self::REACTION_CHEMICAL,  // Unrefined Mineral
+
+        // filterID 16 "Hybrid Reactions" -> 2716/2715.
+        974 => self::REACTION_HYBRID,     // Hybrid Polymers
+
+        // filterID 17 "Biochemical Reactions" -> 2720/2719.
+        712 => self::REACTION_BIO,        // Biochemical Material
+        4096 => self::REACTION_BIO,       // Molecular-Forged Materials
     ];
 
-    /** Inventory categories that map straight to a scope. */
+    /**
+     * Inventory categories that map straight to a scope: the categoryIDs CCP
+     * lists inside the same filters (1, 2, 4 and 12).
+     */
     public const CATEGORY_SCOPES = [
-        'Charge' => self::AMMO,
-        'Drone' => self::DRONE,
-        'Module' => self::EQUIPMENT,
-        'Structure' => self::STRUCTURE,
+        'Charge' => self::AMMO,                          // 8,  filterID 4
+        'Drone' => self::DRONE,                          // 18, filterID 1
+        'Fighter' => self::DRONE,                        // 87, filterID 1
+        'Module' => self::EQUIPMENT,                     // 7,  filterID 2
+        'Implant' => self::EQUIPMENT,                    // 20, filterID 2
+        'Deployable' => self::EQUIPMENT,                 // 22, filterID 2
+        'Starbase' => self::STRUCTURE,                   // 23, filterID 12
+        'Infrastructure Upgrades' => self::STRUCTURE,    // 39, filterID 12
+        'Sovereignty Structures' => self::STRUCTURE,     // 40, filterID 12
+        'Structure' => self::STRUCTURE,                  // 65, filterID 12
+        'Structure Module' => self::STRUCTURE,           // 66, filterID 12
     ];
 
     /**

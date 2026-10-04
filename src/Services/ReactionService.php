@@ -9,7 +9,7 @@ use IndustryManager\Helpers\IndustryActivity;
 use IndustryManager\Helpers\IndustryData;
 
 /**
- * ReactionService — browse list of reaction formulas (activityID 11).
+ * ReactionService — browse list of reaction formulas (activityID 9).
  *
  * The per-formula breakdown (inputs / output / time / skills) reuses
  * ProductionCalculator::recipe($formulaTypeId, IndustryActivity::REACTIONS),

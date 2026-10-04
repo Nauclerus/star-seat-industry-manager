@@ -133,8 +133,8 @@ class StructureIndustryRigsTest extends TestCase
     {
         // A structure fitted with manufacturing ME rigs only. A reaction job reads
         // the reaction-family multipliers (2718/2717, 2720/2719, 2716/2715), and no
-        // item in the SDE writes them: CCP retired the reaction rigs. So reactions
-        // take nothing, rather than inheriting the best fitted manufacturing rig.
+        // manufacturing rig writes them. So reactions take nothing, rather than
+        // inheriting the best fitted manufacturing rig.
         $fit = $this->fit([
             $this->rig(43867, 'Advanced Component ME', ['me' => -2.0], [2557, 2658, 2594]),
             $this->rig(43875, 'Structure ME', ['me' => -2.0], [2561, 2594]),
@@ -146,6 +146,51 @@ class StructureIndustryRigsTest extends TestCase
             $this->assertSame(0.0, $job['me'], $scope);
             $this->assertSame('uncovered', $job['source'], $scope);
             $this->assertNull($job['rig'], $scope);
+        }
+    }
+
+    public function test_reaction_rigs_apply_to_their_own_family_only(): void
+    {
+        // Standup M-Set Composite Reactor Material Efficiency I: writes 2718 from
+        // its own 2714, and in null-sec the rig's 1.1 band multiplier turns -2.0
+        // into 2.2. Hybrid and biochemical are a different attribute pair, so they
+        // stay uncovered.
+        $fit = $this->fit([
+            $this->rig(46486, 'Standup M-Set Composite Reactor ME I', ['me' => -2.0], [2718, 2714], 1.1),
+        ]);
+
+        $job = StructureIndustryRigs::bonusesFor($fit, IndustryActivity::REACTIONS, RigScope::REACTION_CHEMICAL);
+
+        $this->assertSame(2.2, $job['me']);
+        $this->assertSame(0.0, $job['te']);
+        $this->assertSame('scope', $job['source']);
+        $this->assertSame(46486, $job['rig']['type_id']);
+
+        foreach ([RigScope::REACTION_BIO, RigScope::REACTION_HYBRID] as $scope) {
+            $this->assertSame(0.0, StructureIndustryRigs::bonusesFor($fit, IndustryActivity::REACTIONS, $scope)['me'], $scope);
+        }
+
+        // And the other way round: a reaction rig does not leak into manufacturing.
+        $mfg = StructureIndustryRigs::bonusesFor($fit, IndustryActivity::MANUFACTURING, RigScope::ADV_COMPONENT);
+
+        $this->assertSame(0.0, $mfg['me']);
+        $this->assertSame('uncovered', $mfg['source']);
+    }
+
+    public function test_lset_reaction_rig_covers_all_three_families(): void
+    {
+        // Standup L-Set Reactor Efficiency II carries all six reaction effects and
+        // both 2713 and 2714, so one rig covers composite, hybrid and biochemical.
+        $fit = $this->fit([
+            $this->rig(46497, 'Standup L-Set Reactor Efficiency II', ['te' => -24.0, 'me' => -2.4], [2715, 2716, 2717, 2718, 2719, 2720], 1.1),
+        ]);
+
+        foreach ([RigScope::REACTION_CHEMICAL, RigScope::REACTION_BIO, RigScope::REACTION_HYBRID] as $scope) {
+            $job = StructureIndustryRigs::bonusesFor($fit, IndustryActivity::REACTIONS, $scope);
+
+            $this->assertSame(2.64, $job['me'], $scope);
+            $this->assertSame(26.4, $job['te'], $scope);
+            $this->assertSame('scope', $job['source'], $scope);
         }
     }
 

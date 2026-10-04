@@ -94,9 +94,25 @@ class RigScopeTest extends TestCase
 
     public function test_reaction_groups_are_data_driven(): void
     {
-        $this->assertSame(RigScope::REACTION_CHEMICAL, RigScope::tokenForProduct(436, 'Simple Reaction', 'Reaction', 1));
-        $this->assertSame(RigScope::REACTION_BIO, RigScope::tokenForProduct(661, 'Simple Biochemical Reactions', 'Reaction', 1));
-        $this->assertSame(RigScope::REACTION_HYBRID, RigScope::tokenForProduct(977, 'Hybrid Reactions', 'Reaction', 1));
+        // industryTargetFilters.jsonl on build 3569502: filterID 18 composite,
+        // 16 hybrid, 17 biochemical. These are the groups the 120 reaction
+        // blueprints actually produce into.
+        $this->assertSame(RigScope::REACTION_CHEMICAL, RigScope::tokenForProduct(428, 'Intermediate Materials', 'Material', 1));
+        $this->assertSame(RigScope::REACTION_CHEMICAL, RigScope::tokenForProduct(429, 'Composite', 'Material', 1));
+        $this->assertSame(RigScope::REACTION_CHEMICAL, RigScope::tokenForProduct(4932, 'Unrefined Mineral', 'Material', 1));
+        $this->assertSame(RigScope::REACTION_HYBRID, RigScope::tokenForProduct(974, 'Hybrid Polymers', 'Material', 1));
+        $this->assertSame(RigScope::REACTION_BIO, RigScope::tokenForProduct(712, 'Biochemical Material', 'Material', 1));
+        $this->assertSame(RigScope::REACTION_BIO, RigScope::tokenForProduct(4096, 'Molecular-Forged Materials', 'Material', 1));
+    }
+
+    public function test_pos_reaction_groups_no_longer_map(): void
+    {
+        // The POS-era groups these replaced are category 24 "Reaction", and every
+        // type in them is unpublished. Nothing is produced there any more, so they
+        // must not be treated as reaction scopes.
+        foreach ([436, 484, 661, 662, 977] as $groupId) {
+            $this->assertSame(RigScope::NONE, RigScope::tokenForProduct($groupId, 'Reaction', 'Reaction', 1));
+        }
     }
 
     public function test_ship_scopes_split_by_size_and_tech_level(): void

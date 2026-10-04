@@ -71,8 +71,8 @@ class RunAssignerTest extends TestCase
         $assigner = new RunAssigner(
             collect([
                 $this->structure(1, 'Athanor', StructureTypes::ATHANOR, [
-                    $this->rig(43867, 'Reaction Comp', ['me' => -2.0], [2718, 2717]),
-                ]),
+                    $this->rig(46486, 'Standup M-Set Composite Reactor ME I', ['me' => -2.0], [2718, 2714], 1.1),
+                ], 1.1),
             ]),
             scopeResolver: fn (int $productId) => RigScope::REACTION_CHEMICAL
         );
@@ -82,11 +82,13 @@ class RunAssignerTest extends TestCase
 
         $this->assertNull($manufacturing['structure_id']);
 
-        $reaction = $assigner->for($this->recipe(9005, 436, IndustryActivity::REACTIONS));
+        $reaction = $assigner->for($this->recipe(9005, 428, IndustryActivity::REACTIONS));
 
         $this->assertSame(1, $reaction['structure_id']);
         $this->assertSame(RigScope::REACTION_CHEMICAL, $reaction['scope']);
-        $this->assertSame(4.2, $reaction['me_bonus']);
+        // The rig's own 1.1 null-sec band multiplier, not the 1.9/2.1 of an
+        // engineering rig.
+        $this->assertSame(2.2, $reaction['me_bonus']);
     }
 
     public function test_a_stored_override_beats_the_auto_best_pick(): void
@@ -163,7 +165,7 @@ class RunAssignerTest extends TestCase
             : 'general';
     }
 
-    private function structure(int $structureId, string $name, int $typeId, array $rigs): array
+    private function structure(int $structureId, string $name, int $typeId, array $rigs, float $multiplier = 2.1): array
     {
         $best = ['me' => 0.0, 'te' => 0.0, 'cost' => 0.0];
 
@@ -180,7 +182,7 @@ class RunAssignerTest extends TestCase
             'security' => -0.5,
             'fit' => [
                 'band' => 'nullsec',
-                'multiplier' => 2.1,
+                'multiplier' => $multiplier,
                 'rigs' => $rigs,
                 'me_bonus' => $best['me'],
                 'te_bonus' => $best['te'],
@@ -190,12 +192,12 @@ class RunAssignerTest extends TestCase
         ];
     }
 
-    private function rig(int $typeId, string $name, array $bonuses, array $attributes): array
+    private function rig(int $typeId, string $name, array $bonuses, array $attributes, float $multiplier = 2.1): array
     {
         $effectiveByLabel = [];
 
         foreach ($bonuses as $label => $raw) {
-            $effectiveByLabel[$label] = round(abs($raw) * 2.1, 2);
+            $effectiveByLabel[$label] = round(abs($raw) * $multiplier, 2);
         }
 
         $primary = array_key_first($bonuses);
@@ -205,7 +207,7 @@ class RunAssignerTest extends TestCase
             'name' => $name,
             'bonus' => $primary,
             'raw' => round($bonuses[$primary], 2),
-            'multiplier' => 2.1,
+            'multiplier' => $multiplier,
             'effective' => $effectiveByLabel[$primary],
             'bonuses' => $bonuses,
             'effective_by_label' => $effectiveByLabel,
@@ -221,6 +223,7 @@ class RunAssignerTest extends TestCase
     {
         // Seed the stub SDE so the scope resolver can classify the product.
         DB::table('invCategories')->insertOrIgnore([
+            ['categoryID' => 4, 'categoryName' => 'Material'],
             ['categoryID' => 6, 'categoryName' => 'Ship'],
             ['categoryID' => 17, 'categoryName' => 'Commodity'],
             ['categoryID' => 24, 'categoryName' => 'Reaction'],
@@ -231,7 +234,7 @@ class RunAssignerTest extends TestCase
             334 => ['categoryID' => 17, 'groupName' => 'Construction Components'],
             324 => ['categoryID' => 6, 'groupName' => 'Assault Frigate'],
             1404 => ['categoryID' => 65, 'groupName' => 'Engineering Complex'],
-            436 => ['categoryID' => 24, 'groupName' => 'Simple Reaction'],
+            428 => ['categoryID' => 4, 'groupName' => 'Intermediate Materials'],
         ];
 
         DB::table('invGroups')->insertOrIgnore([

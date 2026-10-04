@@ -5,9 +5,17 @@ namespace IndustryManager\Helpers;
 /**
  * IndustryActivity — EVE industry activity IDs + display metadata.
  *
- * These IDs are the `activityID` column shared across the industryActivity*
- * SDE tables and the `activity_id` column on character/corporation_industry_jobs.
- * They are stable CCP constants.
+ * These are CCP's own activity IDs: the `activityID` of the recipe tables, the
+ * `activityID` of industryActivities.jsonl / ramActivities, and the `activity_id`
+ * SeAT stores on character_industry_jobs and corporation_industry_jobs. They come
+ * straight from live job rows, so the same number means the same activity on both
+ * sides of every join this plugin does.
+ *
+ * Verified against SDE build 3569502 and the live job tables on 2026-10-04:
+ * reaction jobs are recorded under 9, and 9 is what industryActivities.jsonl
+ * calls "Reactions". The Upwell rework kept the POS-era activity rather than
+ * introducing a new one, which is why the reaction product groups and the
+ * reactor service modules all hang off 9.
  */
 class IndustryActivity
 {
@@ -16,7 +24,7 @@ class IndustryActivity
     public const RESEARCH_ME = 4;   // Researching Material Efficiency
     public const COPYING = 5;
     public const INVENTION = 8;
-    public const REACTIONS = 11;    // Modern (Athanor/Tatara) reactions
+    public const REACTIONS = 9;     // Upwell reactions (Athanor, Tatara, industry complexes)
 
     /**
      * Legacy / defunct activity IDs we recognise for labelling old jobs but
@@ -24,9 +32,10 @@ class IndustryActivity
      *   2  = Researching Technology (removed)
      *   6  = Duplicating (removed)
      *   7  = Reverse Engineering (removed with T3 rework)
-     *   9  = Reactions (old POS simple reactions; superseded by 11)
+     *   11 = an ID that appears in older third-party dumps for reactions; CCP
+     *        has never used it, and no live job or recipe row carries it.
      */
-    public const LEGACY = [2, 6, 7, 9];
+    public const LEGACY = [2, 6, 7, 11];
 
     /**
      * Activities this plugin actively calculates production for in v1.
@@ -53,7 +62,7 @@ class IndustryActivity
             2 => 'Technology Research (legacy)',
             6 => 'Duplicating (legacy)',
             7 => 'Reverse Engineering (legacy)',
-            9 => 'Reactions (legacy POS)',
+            11 => 'Reactions (legacy dump)',
         ][$activityId] ?? ('Activity #' . $activityId);
     }
 
