@@ -20,7 +20,7 @@
                     <div class="im-empty-state">
                         <i class="fas fa-building"></i>
                         <p>No industry structures found for your corporations.</p>
-                        <p class="im-text-muted">Structures are listed when a service module in them provides an industry activity.</p>
+                        <p class="im-text-muted">Structures that can hold a service module are listed, even when nothing is fitted in them.</p>
                     </div>
                 @else
                     <div class="im-structure-grid">
@@ -51,7 +51,9 @@
                                 <div class="im-structure-services">
                                     <div class="im-result-label mb-1">Services</div>
                                     @if(empty($st['services']))
-                                        <div class="im-text-muted">No service modules fitted.</div>
+                                        <div class="im-text-muted">
+                                            {{ ($st['assets_known'] ?? true) ? 'No service modules fitted.' : 'No asset data for this corporation.' }}
+                                        </div>
                                     @else
                                         @foreach($st['services'] as $svc)
                                             <div class="im-service-row">
@@ -70,7 +72,8 @@
                                             </span>
                                         @empty
                                             <span class="im-badge im-badge-gap">
-                                                <i class="fas fa-ban mr-1"></i> No industry activity
+                                                <i class="fas fa-ban mr-1"></i>
+                                                {{ ($st['assets_known'] ?? true) ? 'No industry activity' : 'Activities unknown' }}
                                             </span>
                                         @endforelse
 

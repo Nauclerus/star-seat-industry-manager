@@ -62,27 +62,7 @@ class StructureService
         $ownCorpIds = $this->resolver->ownCorporationIds();
         $capability = IndustryData::isCapabilityInstalled();
 
-        $query = DB::table('corporation_structures as s')
-            ->leftJoin('invTypes as t', 't.typeID', '=', 's.type_id')
-            ->leftJoin('universe_structures as u', 'u.structure_id', '=', 's.structure_id')
-            ->leftJoin('mapDenormalize as m', 'm.itemID', '=', 's.system_id')
-            ->whereIn('s.corporation_id', $corpIds);
-
-        // Without the capability map there is nothing to read a structure's
-        // services through, so fall back to the curated industry structure types.
-        if (!$capability) {
-            $query->whereIn('s.type_id', StructureTypes::INDUSTRY);
-        }
-
-        $structures = $query->get([
-            's.structure_id',
-            's.corporation_id',
-            's.type_id',
-            't.typeName as type_name',
-            'u.name as struct_name',
-            'm.itemName as system_name',
-            'm.security',
-        ]);
+        $structures = $this->candidates($corpIds, $capability);
 
         if ($structures->isEmpty()) {
             return collect();
@@ -90,6 +70,7 @@ class StructureService
 
         $ids = $structures->pluck('structure_id')->map(fn ($id) => (int) $id)->all();
         $securityById = [];
+        $withAssets = $this->services->structuresWithAssets($ids);
 
         foreach ($structures as $s) {
             $securityById[(int) $s->structure_id] = $s->security !== null ? (float) $s->security : null;
@@ -99,7 +80,7 @@ class StructureService
         $statuses = $this->access->statuses($this->resolver->characterIds(), $ids);
 
         return $structures
-            ->map(function ($s) use ($capabilities, $statuses, $ownCorpIds) {
+            ->map(function ($s) use ($capabilities, $statuses, $ownCorpIds, $withAssets) {
                 $structureId = (int) $s->structure_id;
                 $security = $s->security !== null ? (float) $s->security : null;
                 $capability = $capabilities[$structureId]
@@ -123,6 +104,7 @@ class StructureService
                     'activities' => $capability['activities'],
                     'access' => $status['status'],
                     'access_denied' => $status['denied'],
+                    'assets_known' => in_array($structureId, $withAssets, true),
                     'bonuses' => $this->bonusesFor((int) $s->type_id),
                     'blocked' => $capability['blocked'] ?? [],
                 ];
@@ -155,6 +137,79 @@ class StructureService
     }
 
     /**
+     * The structures the alliance corporations own.
+     *
+     * SeAT learns about a structure in two ways. The corporation structure route
+     * gives the structure, the corporation and the system it stands in. The access
+     * probe records a structure in universe_structures even for a corporation whose
+     * own structure list has never been read. Both are structures the alliance has,
+     * so both belong in the comparison; what the second one lacks is the asset data
+     * that says what is fitted inside, which is recorded as such rather than
+     * guessed at.
+     *
+     * @param  int[]  $corpIds
+     * @return \Illuminate\Support\Collection<int, object>
+     */
+    private function candidates(array $corpIds, bool $capability): Collection
+    {
+        $query = DB::table('corporation_structures as s')
+            ->leftJoin('invTypes as t', 't.typeID', '=', 's.type_id')
+            ->leftJoin('universe_structures as u', 'u.structure_id', '=', 's.structure_id')
+            ->leftJoin('mapDenormalize as m', 'm.itemID', '=', 's.system_id')
+            ->whereIn('s.corporation_id', $corpIds);
+
+        // Without the capability map there is nothing to read a structure's
+        // services through, so fall back to the curated industry structure types.
+        if (!$capability) {
+            $query->whereIn('s.type_id', StructureTypes::INDUSTRY);
+        }
+
+        $structures = $query->get([
+            's.structure_id',
+            's.corporation_id',
+            's.type_id',
+            't.typeName as type_name',
+            'u.name as struct_name',
+            'm.itemName as system_name',
+            'm.security',
+        ]);
+
+        $seen = $structures->pluck('structure_id')->map(fn ($id) => (int) $id)->all();
+
+        $probe = DB::table('universe_structures as u')
+            ->leftJoin('invTypes as t', 't.typeID', '=', 'u.type_id')
+            ->leftJoin('mapDenormalize as m', 'm.itemID', '=', 'u.solar_system_id')
+            ->whereIn('u.owner_id', $corpIds)
+            ->whereNotNull('u.type_id');
+
+        if (!empty($seen)) {
+            $probe->whereNotIn('u.structure_id', $seen);
+        }
+
+        if (!$capability) {
+            $probe->whereIn('u.type_id', StructureTypes::INDUSTRY);
+        }
+
+        try {
+            foreach ($probe->get([
+                'u.structure_id',
+                'u.owner_id as corporation_id',
+                'u.type_id',
+                't.typeName as type_name',
+                'u.name as struct_name',
+                'm.itemName as system_name',
+                'm.security',
+            ]) as $row) {
+                $structures->push($row);
+            }
+        } catch (\Throwable $e) {
+            // An install without the probe table simply has the one source.
+        }
+
+        return $structures;
+    }
+
+    /**
      * One structure, scoped to what the current user may use, with its fitted
      * services and resolved rig fit. Used by the calculator when a structure is
      * chosen, so the modifiers reflect the actual fit rather than a guess.
@@ -177,6 +232,23 @@ class StructureService
                 'm.itemName as system_name',
                 'm.security',
             ]);
+
+        if (!$structure) {
+            // Known from the access probe, with no corporation structure row behind it.
+            $structure = DB::table('universe_structures as u')
+                ->leftJoin('invTypes as t', 't.typeID', '=', 'u.type_id')
+                ->leftJoin('mapDenormalize as m', 'm.itemID', '=', 'u.solar_system_id')
+                ->where('u.structure_id', $structureId)
+                ->first([
+                    'u.structure_id',
+                    'u.owner_id as corporation_id',
+                    'u.type_id',
+                    't.typeName as type_name',
+                    'u.name as struct_name',
+                    'm.itemName as system_name',
+                    'm.security',
+                ]);
+        }
 
         if (!$structure || !$this->resolver->canUseCorporation((int) $structure->corporation_id)) {
             return null;

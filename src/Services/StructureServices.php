@@ -157,6 +157,38 @@ class StructureServices
     }
 
     /**
+     * Which of these structures SeAT holds asset rows for.
+     *
+     * A structure can be known without its contents being known: the access probe
+     * records the structure, and only the corporation asset route records what is
+     * fitted in it. Without asset rows nothing fitted can be claimed in either
+     * direction, so a structure like that is a gap with an unknown inside rather
+     * than a structure with nothing in it.
+     *
+     * @param  array<int>  $structureIds
+     * @return array<int>
+     */
+    public function structuresWithAssets(array $structureIds): array
+    {
+        $structureIds = array_values(array_unique(array_map('intval', $structureIds)));
+
+        if (empty($structureIds) || !IndustryData::hasTable('corporation_assets')) {
+            return [];
+        }
+
+        try {
+            $rows = DB::table('corporation_assets')
+                ->whereIn('location_id', $structureIds)
+                ->distinct()
+                ->pluck('location_id');
+        } catch (\Throwable $e) {
+            return [];
+        }
+
+        return $rows->map(fn ($id) => (int) $id)->all();
+    }
+
+    /**
      * @return array<int, array<int>>
      */
     private function installations(): array
