@@ -46,6 +46,9 @@ class CcpJsonlSource implements RecipeSource
 
     private ?string $pinned = null;
 
+    /** @var array{build:?string, url:?string}|null */
+    private ?array $latest = null;
+
     private string $version = 'unknown';
 
     /**
@@ -141,7 +144,7 @@ class CcpJsonlSource implements RecipeSource
         ];
 
         $diskBuild = $this->buildFromPath($onDisk[0] ?? $onDisk[1] ?? $onDisk[2]);
-        $current = $this->pinned ?? $this->currentBuild();
+        $current = $this->pinned ?? $this->latest()['build'];
 
         if ($current === null) {
             // CCP cannot be reached: the newest files on disk are the best there is.
@@ -160,28 +163,49 @@ class CcpJsonlSource implements RecipeSource
     }
 
     /**
-     * Which build CCP's `latest` alias points at, from the redirect target:
-     * `.../tranquility/eve-online-static-data-3569502-jsonl.zip`.
+     * What CCP's `latest` alias currently points at: the build number and the
+     * archive behind it.
+     *
+     * The alias answers with a 302 whose headers carry both
+     * (`x-sde-build-number` and `location`). The archive itself comes from object
+     * storage and does not repeat them, so the redirect must not be followed
+     * here. Resolved once per import.
+     *
+     * @return array{build:?string, url:?string}
      */
-    private function currentBuild(): ?string
+    private function latest(): array
     {
+        if ($this->latest !== null) {
+            return $this->latest;
+        }
+
+        $this->latest = ['build' => null, 'url' => null];
+
         try {
             $client = new Client(['timeout' => 30, 'connect_timeout' => 10]);
 
             $res = $client->request('HEAD', self::CCP_LATEST_URL, [
+                'allow_redirects' => false,
                 'headers' => ['User-Agent' => 'IndustryManager-SeAT-plugin'],
             ]);
 
-            $url = (string) ($res->getHeaders()['x-effective-url'][0] ?? $res->getEffectiveUrl());
+            $build = (int) $res->getHeaderLine('x-sde-build-number');
+            $location = trim((string) $res->getHeaderLine('location'));
 
-            if (preg_match('/static-data-(\d+)-jsonl\.zip/', $url, $m)) {
-                return $m[1];
+            if ($build) {
+                $this->latest['build'] = (string) $build;
+            } elseif (preg_match('/static-data-(\d+)-jsonl\.zip/', $location, $m)) {
+                $this->latest['build'] = $m[1];
+            }
+
+            if ($location !== '') {
+                $this->latest['url'] = $location;
             }
         } catch (\Throwable $e) {
             // Unreachable; the caller decides what to fall back to.
         }
 
-        return null;
+        return $this->latest;
     }
 
     /**
@@ -235,6 +259,16 @@ class CcpJsonlSource implements RecipeSource
             throw new \RuntimeException("The PHP zip extension is required to extract CCP's SDE but is not loaded.");
         }
 
+        $url = $this->latest()['url'] ?? self::CCP_LATEST_URL;
+
+        // The directory is named for the archive actually fetched, in case the
+        // header and the redirect target ever disagree.
+        if (preg_match('/static-data-(\d+)-jsonl\.zip/', $url, $m)) {
+            $build = $m[1];
+        }
+
+        $this->version = $build;
+
         $dir = $this->work . $build . '/';
 
         if (! File::exists($dir)) {
@@ -244,21 +278,13 @@ class CcpJsonlSource implements RecipeSource
         $client = new Client(['timeout' => 1200, 'connect_timeout' => 30]);
         $zipPath = $dir . 'ccp-sde.zip';
 
-        $res = $client->request('GET', self::CCP_LATEST_URL, [
+        $res = $client->request('GET', $url, [
             'sink' => $zipPath,
             'headers' => ['User-Agent' => 'IndustryManager-SeAT-plugin'],
         ]);
 
         if ($res->getStatusCode() !== 200) {
             throw new \RuntimeException('Download failed: HTTP ' . $res->getStatusCode());
-        }
-
-        // The redirect target names the build, and it is authoritative when it
-        // disagrees with the alias we were given.
-        $effective = (string) ($res->getHeaders()['x-effective-url'][0] ?? '');
-
-        if (preg_match('/static-data-(\d+)-jsonl\.zip/', $effective, $m)) {
-            $this->version = $m[1];
         }
 
         $zip = new \ZipArchive();
