@@ -50,6 +50,13 @@ class IndustryData
     public const TABLE_RUNS = 'industry_manager_production_runs';
 
     /**
+     * Plugin-owned structure capability map: service module -> assembly line ->
+     * activity + accepted product groups.
+     */
+    public const TABLE_ASSEMBLY_LINES = 'industry_manager_assembly_lines';
+    public const TABLE_INSTALLATIONS = 'industry_manager_installation_types';
+
+    /**
      * The manufacturing/invention/reaction set.
      */
     public const TABLES = [
@@ -80,6 +87,17 @@ class IndustryData
     ];
 
     /**
+     * The structure capability set, tracked separately because only CCP publishes
+     * it: with the Fuzzwork fallback the tables stay empty and the calculator
+     * falls back to the curated structure-type gate instead of the fitted-service
+     * gate.
+     */
+    public const CAPABILITY_TABLES = [
+        self::TABLE_ASSEMBLY_LINES,
+        self::TABLE_INSTALLATIONS,
+    ];
+
+    /**
      * Per-request memos so repeated isInstalled() calls don't re-hit the schema
      * inspector (which queries information_schema on MySQL).
      */
@@ -88,6 +106,8 @@ class IndustryData
     private static ?bool $piInstalledMemo = null;
 
     private static ?bool $effectsInstalledMemo = null;
+
+    private static ?bool $capabilityInstalledMemo = null;
 
     /**
      * Is the manufacturing recipe data present AND populated?
@@ -153,6 +173,28 @@ class IndustryData
     }
 
     /**
+     * Are the assembly-line/service-module tables present AND populated? Without
+     * them the plugin cannot tell which activity a structure's fitted service
+     * modules actually enable, and falls back to the curated structure-type gate.
+     */
+    public static function isCapabilityInstalled(): bool
+    {
+        if (self::$capabilityInstalledMemo !== null) {
+            return self::$capabilityInstalledMemo;
+        }
+
+        try {
+            self::$capabilityInstalledMemo = Schema::hasTable(self::TABLE_ASSEMBLY_LINES)
+                && Schema::hasTable(self::TABLE_INSTALLATIONS)
+                && DB::table(self::TABLE_INSTALLATIONS)->exists();
+        } catch (\Throwable $e) {
+            self::$capabilityInstalledMemo = false;
+        }
+
+        return self::$capabilityInstalledMemo;
+    }
+
+    /**
      * Fine-grained presence check for an individual table, memo-free.
      */
     public static function hasTable(string $table): bool
@@ -173,6 +215,7 @@ class IndustryData
         self::$installedMemo = null;
         self::$piInstalledMemo = null;
         self::$effectsInstalledMemo = null;
+        self::$capabilityInstalledMemo = null;
     }
 
     /**

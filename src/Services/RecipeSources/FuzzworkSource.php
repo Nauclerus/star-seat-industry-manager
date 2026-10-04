@@ -73,6 +73,21 @@ class FuzzworkSource implements RecipeSource
             ],
             'keep' => ['effectID', 'effectName', 'modifierInfo'],
         ],
+        // Assembly lines: the activity each line runs. Fuzzwork has no equivalent
+        // of industryInstallationTypes (its `ramAssemblyLineTypes` is deprecated
+        // and dumps empty), so the service-module half of the capability map is
+        // CCP-only and the group/category detail is missing here.
+        'ramAssemblyLines' => [
+            'table' => IndustryData::TABLE_ASSEMBLY_LINES,
+            'columns' => [
+                'assemblyLineID', 'activityID', 'baseCostMultiplier',
+                'baseMaterialMultiplier', 'baseTimeMultiplier', 'name', 'description',
+            ],
+            'keep' => [
+                'assemblyLineID', 'activityID', 'name',
+                'baseMaterialMultiplier', 'baseTimeMultiplier', 'baseCostMultiplier',
+            ],
+        ],
     ];
 
     private string $version = 'unknown';
@@ -96,7 +111,14 @@ class FuzzworkSource implements RecipeSource
     {
         $counts = [];
 
-        foreach (array_merge(IndustryData::TABLES, IndustryData::PI_TABLES, IndustryData::EFFECT_TABLES) as $table) {
+        $tables = array_merge(
+            IndustryData::TABLES,
+            IndustryData::PI_TABLES,
+            IndustryData::EFFECT_TABLES,
+            IndustryData::CAPABILITY_TABLES
+        );
+
+        foreach ($tables as $table) {
             if (IndustryData::hasTable($table)) {
                 DB::table($table)->delete();
             }

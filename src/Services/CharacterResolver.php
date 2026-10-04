@@ -22,6 +22,7 @@ class CharacterResolver
 {
     private ?array $charMemo = null;
     private ?array $ownCorpMemo = null;
+    private ?array $allianceCorpMemo = null;
 
     public function user()
     {
@@ -88,6 +89,67 @@ class CharacterResolver
             ->filter()
             ->values()
             ->all();
+    }
+
+    /**
+     * Corporations of the alliances the user's characters belong to — the user's
+     * own corps plus their alliance-mates.
+     *
+     * Structures are an alliance-wide question: a run can be done in a corp next
+     * door. Jobs are not, which is why this is separate from ownCorporationIds()
+     * and only the structure queries use it.
+     *
+     * @return int[]
+     */
+    public function allianceCorporationIds(): array
+    {
+        if ($this->allianceCorpMemo !== null) {
+            return $this->allianceCorpMemo;
+        }
+
+        $u = $this->user();
+
+        if (!$u) {
+            return $this->allianceCorpMemo = [];
+        }
+
+        $allianceIds = DB::table('refresh_tokens as rt')
+            ->join('character_affiliations as ca', 'ca.character_id', '=', 'rt.character_id')
+            ->where('rt.user_id', $u->id)
+            ->whereNull('rt.deleted_at')
+            ->whereNotNull('ca.alliance_id')
+            ->pluck('ca.alliance_id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        if (empty($allianceIds)) {
+            return $this->allianceCorpMemo = $this->ownCorporationIds();
+        }
+
+        $corpIds = DB::table('corporation_infos')
+            ->whereIn('alliance_id', $allianceIds)
+            ->pluck('corporation_id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        return $this->allianceCorpMemo = array_values(array_unique(array_merge($this->ownCorporationIds(), $corpIds)));
+    }
+
+    /**
+     * May the user use this corporation's structures? Their own corps, their
+     * alliance's corps, and everything for a superuser.
+     */
+    public function canUseCorporation(int $corporationId): bool
+    {
+        if ($this->isSuperuser()) {
+            return true;
+        }
+
+        return in_array($corporationId, $this->allianceCorporationIds(), true);
     }
 
     /**

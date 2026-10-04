@@ -42,6 +42,24 @@ class CcpJsonlSource implements RecipeSource
         'reaction' => IndustryActivity::REACTIONS,
     ];
 
+    /** basename => the method that reads it. */
+    private const IMPORTERS = [
+        'blueprints.jsonl' => 'importBlueprints',
+        'planetSchematics.jsonl' => 'importSchematics',
+        'dogmaEffects.jsonl' => 'importEffects',
+        'industryAssemblyLines.jsonl' => 'importAssemblyLines',
+        'industryInstallationTypes.jsonl' => 'importInstallations',
+    ];
+
+    /** The archive entries this plugin reads, keyed by basename. */
+    public const ARCHIVE_FILES = [
+        'blueprints.jsonl',
+        'planetSchematics.jsonl',
+        'dogmaEffects.jsonl',
+        'industryAssemblyLines.jsonl',
+        'industryInstallationTypes.jsonl',
+    ];
+
     private string $work;
 
     private ?string $pinned = null;
@@ -96,10 +114,10 @@ class CcpJsonlSource implements RecipeSource
             File::makeDirectory($this->work, 0755, true);
         }
 
-        [$blueprints, $schematics, $effects] = $this->locateFiles();
+        $files = $this->locateFiles();
 
-        if (! $blueprints && ! $schematics && ! $effects) {
-            throw new \RuntimeException('Could not find or download CCP SDE files (blueprints.jsonl / planetSchematics.jsonl / dogmaEffects.jsonl).');
+        if (! array_filter($files)) {
+            throw new \RuntimeException('Could not find or download CCP SDE files (' . implode(' / ', self::ARCHIVE_FILES) . ').');
         }
 
         $rows = [];
@@ -107,23 +125,21 @@ class CcpJsonlSource implements RecipeSource
         // One clear for the whole run, so a partial file set cannot leave stale rows.
         $this->truncate();
 
-        if ($blueprints) {
-            $rows = array_merge($rows, $this->importBlueprints($blueprints));
-        }
+        foreach (self::ARCHIVE_FILES as $basename) {
+            if (! $files[$basename]) {
+                continue;
+            }
 
-        if ($schematics) {
-            $rows = array_merge($rows, $this->importSchematics($schematics));
-        }
+            $method = self::IMPORTERS[$basename];
 
-        if ($effects) {
-            $rows = array_merge($rows, $this->importEffects($effects));
+            $rows = array_merge($rows, $this->$method($files[$basename]));
         }
 
         return $rows;
     }
 
     /**
-     * @return array{0:?string, 1:?string, 2:?string}
+     * @return array<string, ?string>  basename => path, keyed by self::ARCHIVE_FILES
      */
     /**
      * Files for the build CCP is publishing right now.
@@ -133,17 +149,23 @@ class CcpJsonlSource implements RecipeSource
      * build are never reused silently, because that is what would leave the
      * recipe data stale after a patch.
      *
-     * @return array{0:?string, 1:?string, 2:?string}
+     * @return array<string, ?string>
      */
     private function locateFiles(): array
     {
-        $onDisk = [
-            $this->findUnderStorage('blueprints.jsonl'),
-            $this->findUnderStorage('planetSchematics.jsonl'),
-            $this->findUnderStorage('dogmaEffects.jsonl'),
-        ];
+        $onDisk = [];
 
-        $diskBuild = $this->buildFromPath($onDisk[0] ?? $onDisk[1] ?? $onDisk[2]);
+        foreach (self::ARCHIVE_FILES as $basename) {
+            $onDisk[$basename] = $this->findUnderStorage($basename);
+        }
+
+        $diskBuild = null;
+
+        foreach ($onDisk as $path) {
+            if ($path !== null && ($diskBuild = $this->buildFromPath($path)) !== null) {
+                break;
+            }
+        }
         $current = $this->pinned ?? $this->latest()['build'];
 
         if ($current === null) {
@@ -248,10 +270,10 @@ class CcpJsonlSource implements RecipeSource
     }
 
     /**
-     * Fetch CCP's archive and keep the three files this plugin needs, under a
+     * Fetch CCP's archive and keep the files this plugin needs, under a
      * directory named for the build so a later run can recognise and reuse them.
      *
-     * @return array{0:?string, 1:?string, 2:?string}
+     * @return array<string, ?string>
      */
     private function downloadAndExtract(string $build): array
     {
@@ -293,13 +315,12 @@ class CcpJsonlSource implements RecipeSource
             throw new \RuntimeException('Could not open the downloaded zip.');
         }
 
-        $wanted = ['blueprints.jsonl', 'planetSchematics.jsonl', 'dogmaEffects.jsonl'];
         $found = [];
 
         for ($i = 0; $i < $zip->numFiles; $i++) {
             $entry = $zip->statIndex($i)['name'];
 
-            foreach ($wanted as $w) {
+            foreach (self::ARCHIVE_FILES as $w) {
                 if (strcasecmp(basename($entry), $w) === 0) {
                     $zip->extractTo($dir, $entry);
                     $found[$w] = $dir . basename($entry);
@@ -312,11 +333,13 @@ class CcpJsonlSource implements RecipeSource
         // The archive is ~100 MB and the extracted files are what the import reads.
         @unlink($zipPath);
 
-        return [
-            $found['blueprints.jsonl'] ?? null,
-            $found['planetSchematics.jsonl'] ?? null,
-            $found['dogmaEffects.jsonl'] ?? null,
-        ];
+        $paths = [];
+
+        foreach (self::ARCHIVE_FILES as $w) {
+            $paths[$w] = $found[$w] ?? null;
+        }
+
+        return $paths;
     }
 
     private function importBlueprints(string $path): array
@@ -500,11 +523,159 @@ class CcpJsonlSource implements RecipeSource
 
     private function truncate(): void
     {
-        foreach (array_merge(IndustryData::TABLES, IndustryData::PI_TABLES, IndustryData::EFFECT_TABLES) as $table) {
+        $tables = array_merge(
+            IndustryData::TABLES,
+            IndustryData::PI_TABLES,
+            IndustryData::EFFECT_TABLES,
+            IndustryData::CAPABILITY_TABLES
+        );
+
+        foreach ($tables as $table) {
             if (IndustryData::hasTable($table)) {
                 DB::table($table)->delete();
             }
         }
+    }
+
+    /**
+     * Assembly lines — what an activity looks like from the structure side: which
+     * activity it runs, and which product groups/categories it accepts.
+     *
+     * The group/category lists are what make "Standup Manufacturing Plant I cannot
+     * build a Dreadnought" a fact instead of a rule someone remembered: line 175
+     * lists the groups it accepts and its categories exclude ships, while the
+     * capital groups only appear on lines 176 and 177.
+     */
+    private function importAssemblyLines(string $path): array
+    {
+        $counts = [IndustryData::TABLE_ASSEMBLY_LINES => 0];
+        $buffer = [];
+
+        $handle = fopen($path, 'r');
+
+        while (($line = fgets($handle)) !== false) {
+            $line = trim($line);
+
+            if ($line === '') {
+                continue;
+            }
+
+            $line = json_decode($line, true);
+
+            if (! is_array($line)) {
+                continue;
+            }
+
+            $lineId = (int) ($line['_key'] ?? 0);
+            $activityId = (int) ($line['activityID'] ?? 0);
+
+            if (! $lineId || ! $activityId) {
+                continue;
+            }
+
+            $groups = [];
+
+            foreach (($line['detailsPerGroup'] ?? []) as $detail) {
+                $groups[] = (int) ($detail['groupID'] ?? 0);
+            }
+
+            $categories = [];
+
+            foreach (($line['detailsPerCategory'] ?? []) as $detail) {
+                $categories[] = (int) ($detail['categoryID'] ?? 0);
+            }
+
+            $buffer[] = [
+                'assemblyLineID' => $lineId,
+                'activityID' => $activityId,
+                'name' => mb_substr((string) ($line['name'] ?? ''), 0, 255),
+                'groupIDs' => json_encode(array_values(array_unique(array_filter($groups)))),
+                'categoryIDs' => json_encode(array_values(array_unique(array_filter($categories)))),
+                'baseMaterialMultiplier' => $line['baseMaterialMultiplier'] ?? null,
+                'baseTimeMultiplier' => $line['baseTimeMultiplier'] ?? null,
+                'baseCostMultiplier' => $line['baseCostMultiplier'] ?? null,
+            ];
+
+            if (count($buffer) >= 500) {
+                DB::table(IndustryData::TABLE_ASSEMBLY_LINES)->insert($buffer);
+                $counts[IndustryData::TABLE_ASSEMBLY_LINES] += count($buffer);
+                $buffer = [];
+            }
+        }
+
+        if ($buffer) {
+            DB::table(IndustryData::TABLE_ASSEMBLY_LINES)->insert($buffer);
+            $counts[IndustryData::TABLE_ASSEMBLY_LINES] += count($buffer);
+        }
+
+        fclose($handle);
+
+        return $counts;
+    }
+
+    /**
+     * Service modules -> the assembly lines they provide. Keyed by the module's
+     * typeID, which is what SeAT already stores in the `ServiceSlot*` asset rows,
+     * so a fitted structure maps straight onto its activities.
+     */
+    private function importInstallations(string $path): array
+    {
+        $counts = [IndustryData::TABLE_INSTALLATIONS => 0];
+        $buffer = [];
+
+        $handle = fopen($path, 'r');
+
+        while (($line = fgets($handle)) !== false) {
+            $line = trim($line);
+
+            if ($line === '') {
+                continue;
+            }
+
+            $type = json_decode($line, true);
+
+            if (! is_array($type)) {
+                continue;
+            }
+
+            $typeId = (int) ($type['_key'] ?? 0);
+
+            if (! $typeId) {
+                continue;
+            }
+
+            $lineIds = [];
+
+            foreach (($type['assemblyLines'] ?? []) as $assemblyLine) {
+                $lineIds[] = (int) ($assemblyLine['assemblyLineID'] ?? 0);
+            }
+
+            $lineIds = array_values(array_unique(array_filter($lineIds)));
+
+            if (! $lineIds) {
+                continue;
+            }
+
+            $buffer[] = [
+                'typeID' => $typeId,
+                'assemblyLineIDs' => json_encode($lineIds),
+            ];
+
+            if (count($buffer) >= 500) {
+                DB::table(IndustryData::TABLE_INSTALLATIONS)->insert($buffer);
+                $counts[IndustryData::TABLE_INSTALLATIONS] += count($buffer);
+                $buffer = [];
+            }
+        }
+
+        if ($buffer) {
+            DB::table(IndustryData::TABLE_INSTALLATIONS)->insert($buffer);
+            $counts[IndustryData::TABLE_INSTALLATIONS] += count($buffer);
+        }
+
+        fclose($handle);
+
+        return $counts;
     }
 
     /**

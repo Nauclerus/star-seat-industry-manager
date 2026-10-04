@@ -4,7 +4,7 @@
 @section('page_header', 'Industry Structures')
 
 @push('head')
-<link rel="stylesheet" href="{{ asset('vendor/industry-manager/css/industry-manager.css') }}?v=6">
+<link rel="stylesheet" href="{{ asset('vendor/industry-manager/css/industry-manager.css') }}?v=7">
 @endpush
 
 @section('full')
@@ -20,7 +20,7 @@
                     <div class="im-empty-state">
                         <i class="fas fa-building"></i>
                         <p>No industry structures found for your corporations.</p>
-                        <p class="im-text-muted">Only Engineering Complexes (Raitaru/Azbel/Sotiyo) and Refineries (Athanor/Tatara) are shown.</p>
+                        <p class="im-text-muted">Structures are listed when a service module in them provides an industry activity.</p>
                     </div>
                 @else
                     <div class="im-structure-grid">
@@ -40,7 +40,67 @@
                                         <span class="im-sec im-sec-{{ \Illuminate\Support\Str::slug($st['security_class']) }}">{{ number_format($st['security'], 1) }} {{ $st['security_class'] }}</span>
                                     @endif
                                     <span class="im-text-muted">rig &times;{{ $st['security_multiplier'] }}</span>
+                                    @if($st['scope'] === 'alliance')
+                                        <span class="im-badge im-badge-scope">Alliance</span>
+                                    @endif
+                                    @if($st['access'] === \IndustryManager\Services\StructureAccess::DENIED)
+                                        <span class="im-badge im-badge-denied" title="Docking denied for your characters">No docking</span>
+                                    @endif
                                 </div>
+
+                                <div class="im-structure-services">
+                                    <div class="im-result-label mb-1">Services</div>
+                                    @if(empty($st['services']))
+                                        <div class="im-text-muted">No service modules fitted.</div>
+                                    @else
+                                        @foreach($st['services'] as $svc)
+                                            <div class="im-service-row">
+                                                <span class="im-service-name">{{ $svc['name'] ?: ('Module ' . $svc['type_id']) }}</span>
+                                                @if($svc['quantity'] > 1)
+                                                    <span class="im-text-muted">&times;{{ $svc['quantity'] }}</span>
+                                                @endif
+                                            </div>
+                                        @endforeach
+                                    @endif
+
+                                    <div class="im-activity-row">
+                                        @forelse($st['activities'] as $activityId => $line)
+                                            <span class="im-badge im-badge-activity">
+                                                {{ \IndustryManager\Helpers\IndustryActivity::name($activityId) }}
+                                            </span>
+                                        @empty
+                                            <span class="im-badge im-badge-gap">
+                                                <i class="fas fa-ban mr-1"></i> No industry activity
+                                            </span>
+                                        @endforelse
+
+                                        @foreach($st['blocked'] as $activityId => $max)
+                                            <span class="im-badge im-badge-gap" title="{{ \IndustryManager\Helpers\IndustryActivity::name($activityId) }} needs security {{ $max }} or lower here">
+                                                {{ \IndustryManager\Helpers\IndustryActivity::name($activityId) }} needs {{ $max }} or lower
+                                            </span>
+                                        @endforeach
+                                    </div>
+                                </div>
+
+                                @if(!empty($st['bonuses']))
+                                    <div class="im-structure-bonuses">
+                                        <div class="im-result-label mb-1">Structure bonus</div>
+                                        @foreach($st['bonuses'] as $activityId => $bonus)
+                                            <div class="im-bonus-row">
+                                                <span class="im-bonus-activity">{{ \IndustryManager\Helpers\IndustryActivity::name($activityId) }}</span>
+                                                @if($bonus['material'] < 1)
+                                                    <span class="im-rig-bonus">-{{ round((1 - $bonus['material']) * 100, 1) }}% materials</span>
+                                                @endif
+                                                @if($bonus['cost'] < 1)
+                                                    <span class="im-rig-bonus">-{{ round((1 - $bonus['cost']) * 100, 1) }}% cost</span>
+                                                @endif
+                                                @if($bonus['time'] < 1)
+                                                    <span class="im-rig-bonus im-rig-te">-{{ round((1 - $bonus['time']) * 100, 1) }}% time</span>
+                                                @endif
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                @endif
 
                                 <div class="im-structure-rigs">
                                     <div class="im-result-label mb-1">Fitted rigs ({{ count($st['rigs']) }})</div>

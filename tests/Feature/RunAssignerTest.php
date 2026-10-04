@@ -3,9 +3,12 @@
 namespace IndustryManager\Tests\Feature;
 
 use Illuminate\Support\Facades\DB;
+use IndustryManager\Helpers\AssemblyLines;
 use IndustryManager\Helpers\IndustryActivity;
 use IndustryManager\Helpers\IndustryData;
 use IndustryManager\Helpers\RigScope;
+use IndustryManager\Helpers\ServiceModules;
+use IndustryManager\Helpers\StructureBonuses;
 use IndustryManager\Helpers\StructureTypes;
 use IndustryManager\Services\RunAssigner;
 use IndustryManager\Tests\TestCase;
@@ -17,6 +20,14 @@ use IndustryManager\Tests\TestCase;
  */
 class RunAssignerTest extends TestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        IndustryData::flush();
+        StructureBonuses::flush();
+    }
+
     public function test_the_structure_with_a_rig_covering_the_job_wins(): void
     {
         $assigner = new RunAssigner(
@@ -28,7 +39,7 @@ class RunAssignerTest extends TestCase
                     $this->rig(43855, 'Advanced Small Ship ME', ['me' => -2.0], [2550, 2551]),
                 ]),
             ]),
-            scopeResolver: fn (int $productId) => $this->scopeForProduct($productId)
+            productResolver: fn (int $productId) => $this->productFor($productId)
         );
 
         // A component blueprint must go to the structure with the component rig,
@@ -55,7 +66,7 @@ class RunAssignerTest extends TestCase
                     $this->rig(43867, 'Advanced Component ME', ['me' => -2.0], [2557, 2558]),
                 ]),
             ]),
-            scopeResolver: fn (int $productId) => RigScope::STRUCTURE
+            productResolver: fn (int $productId) => $this->product(RigScope::STRUCTURE, 1404, 65)
         );
 
         $job = $assigner->for($this->recipe(9003, 1404, IndustryActivity::MANUFACTURING));
@@ -66,7 +77,7 @@ class RunAssignerTest extends TestCase
         $this->assertSame('uncovered', $job['source']);
     }
 
-    public function test_refineries_are_only_offered_for_reactions(): void
+    public function test_a_refinery_runs_reactions_and_manufacturing_alike(): void
     {
         $assigner = new RunAssigner(
             collect([
@@ -74,13 +85,14 @@ class RunAssignerTest extends TestCase
                     $this->rig(46486, 'Standup M-Set Composite Reactor ME I', ['me' => -2.0], [2718, 2714], 1.1),
                 ], 1.1),
             ]),
-            scopeResolver: fn (int $productId) => RigScope::REACTION_CHEMICAL
+            productResolver: fn (int $productId) => $this->product(RigScope::REACTION_CHEMICAL, 428, 4)
         );
 
-        // A manufacturing job cannot be run in a refinery, so nothing is offered.
+        // A refinery hosts the manufacturing plant as readily as a citadel or a
+        // complex does, so a manufacturing job is offered there too.
         $manufacturing = $assigner->for($this->recipe(9004, 334, IndustryActivity::MANUFACTURING));
 
-        $this->assertNull($manufacturing['structure_id']);
+        $this->assertSame(1, $manufacturing['structure_id']);
 
         $reaction = $assigner->for($this->recipe(9005, 428, IndustryActivity::REACTIONS));
 
@@ -112,7 +124,7 @@ class RunAssignerTest extends TestCase
                     $this->rig(43855, 'Advanced Small Ship ME', ['me' => -2.0], [2550, 2551]),
                 ]),
             ]),
-            scopeResolver: fn (int $productId) => RigScope::ADV_COMPONENT
+            productResolver: fn (int $productId) => $this->product(RigScope::ADV_COMPONENT, 334, 17)
         );
 
         $assigner->loadAssignments(7);
@@ -135,7 +147,7 @@ class RunAssignerTest extends TestCase
                     $this->rig(43860, 'Invention Cost', ['cost' => -10.0], [2563, 2564]),
                 ]),
             ]),
-            scopeResolver: fn (int $productId) => 'general'
+            productResolver: fn (int $productId) => $this->product('general', 334, 17)
         );
 
         $job = $assigner->for($this->recipe(9006, 334, IndustryActivity::INVENTION));
@@ -146,27 +158,279 @@ class RunAssignerTest extends TestCase
     }
 
     // ----------------------------------------------------------------------
+    // The capability gate: fitted service modules decide, not structure types
+    // ----------------------------------------------------------------------
+
+    public function test_a_structure_is_offered_only_when_a_fitted_service_runs_the_job(): void
+    {
+        $this->seedCapability();
+
+        $assigner = new RunAssigner(
+            collect([
+                // A citadel with a Standup Manufacturing Plant I fitted.
+                $this->structure(1, 'Astrahus with a plant', StructureTypes::ASTRAHUS, [], 1.0, [175]),
+                // A complex with nothing fitted in its service slots.
+                $this->structure(2, 'Azbel with nothing fitted', StructureTypes::AZBEL, [], 2.1, []),
+            ]),
+            productResolver: fn (int $productId) => $this->product(RigScope::ADV_COMPONENT, 334, 17)
+        );
+
+        $job = $assigner->for($this->recipe(9010, 334, IndustryActivity::MANUFACTURING));
+
+        // The citadel can run it and the complex cannot, whatever their sizes say.
+        $this->assertSame(1, $job['structure_id']);
+        $this->assertSame('Structure Basic Manufacturing', $job['service']);
+    }
+
+    public function test_capital_products_need_the_capital_shipyard_line(): void
+    {
+        $this->seedCapability();
+
+        $assigner = new RunAssigner(
+            collect([
+                $this->structure(1, 'Sotiyo, plain plant', StructureTypes::SOTIYO, [], 2.1, [175]),
+                $this->structure(2, 'Sotiyo, capital shipyard', StructureTypes::SOTIYO, [], 2.1, [176]),
+            ]),
+            productResolver: fn (int $productId) => $this->product(RigScope::CAP_SHIP, 485, 6)
+        );
+
+        $dreadnought = $assigner->for($this->recipe(9011, 485, IndustryActivity::MANUFACTURING));
+
+        // Line 175 lists neither group 485 nor category 6, so only the shipyard
+        // structure is able.
+        $this->assertSame(2, $dreadnought['structure_id']);
+        $this->assertSame('Structure Capital Shipyard', $dreadnought['service']);
+
+        // The same structure pair for an ordinary product goes to the plain plant.
+        $component = (new RunAssigner(
+            collect([
+                $this->structure(1, 'Sotiyo, plain plant', StructureTypes::SOTIYO, [], 2.1, [175]),
+                $this->structure(2, 'Sotiyo, capital shipyard', StructureTypes::SOTIYO, [], 2.1, [176]),
+            ]),
+            productResolver: fn (int $productId) => $this->product(RigScope::ADV_COMPONENT, 334, 17)
+        ))->for($this->recipe(9012, 334, IndustryActivity::MANUFACTURING));
+
+        $this->assertSame(1, $component['structure_id']);
+    }
+
+    public function test_reactions_are_refused_above_security_04(): void
+    {
+        $this->seedCapability();
+
+        $assigner = new RunAssigner(
+            collect([
+                $this->structure(1, 'Tatara in highsec', StructureTypes::TATARA, [], 1.0, [182], 0.5),
+                $this->structure(2, 'Tatara in nullsec', StructureTypes::TATARA, [], 1.0, [182], -0.3),
+            ]),
+            productResolver: fn (int $productId) => $this->product(RigScope::REACTION_CHEMICAL, 428, 4)
+        );
+
+        $reaction = $assigner->for($this->recipe(9013, 428, IndustryActivity::REACTIONS));
+
+        $this->assertSame(2, $reaction['structure_id']);
+        $this->assertSame('Standup Composite Reactor', $reaction['service']);
+
+        // The Tatara's own reaction time multiplier is applied to the run.
+        $this->assertSame(0.75, $reaction['structure_bonus']['time']);
+        $this->assertSame(0.75, round($reaction['time_modifier'], 2));
+    }
+
+    public function test_the_security_limit_comes_from_the_service_module(): void
+    {
+        $this->seedCapability();
+
+        // 45537 Standup Composite Reactor I publishes onlineMaxSecurityClass = 1
+        // (lowsec) and disallowInHighSec = 1; highsec starts at 0.5. The plain
+        // manufacturing plant publishes neither, so it has no limit.
+        $this->assertSame(0.4, ServiceModules::maxSecurity(45537));
+        $this->assertNull(ServiceModules::maxSecurity(35878));
+
+        $max = ServiceModules::maxSecurity(45537);
+
+        $assigner = new RunAssigner(
+            collect([
+                $this->structure(1, 'Tatara at the limit', StructureTypes::TATARA, [], 1.0, [182], 0.4, [182 => $max]),
+                $this->structure(2, 'Tatara in highsec', StructureTypes::TATARA, [], 1.0, [182], 0.5, [182 => $max]),
+            ]),
+            productResolver: fn (int $productId) => $this->product(RigScope::REACTION_CHEMICAL, 428, 4)
+        );
+
+        $reaction = $assigner->for($this->recipe(9016, 428, IndustryActivity::REACTIONS));
+
+        $this->assertSame(1, $reaction['structure_id']);
+    }
+
+    public function test_capital_builds_need_a_system_the_shipyard_can_be_online_in(): void
+    {
+        $this->seedCapability();
+
+        // 35881 Standup Capital Shipyard I carries the same pair of attributes the
+        // reactors do, which is where "no capital ships in highsec" comes from.
+        $this->assertSame(0.4, ServiceModules::maxSecurity(35881));
+
+        $max = ServiceModules::maxSecurity(35881);
+
+        $assigner = new RunAssigner(
+            collect([
+                $this->structure(1, 'Azbel in highsec', StructureTypes::AZBEL, [], 1.0, [176], 0.5, [176 => $max]),
+                $this->structure(2, 'Azbel in lowsec', StructureTypes::AZBEL, [], 1.0, [176], 0.4, [176 => $max]),
+            ]),
+            productResolver: fn (int $productId) => $this->product(RigScope::CAP_SHIP, 485, 6)
+        );
+
+        $ship = $assigner->for($this->recipe(9017, 485, IndustryActivity::MANUFACTURING));
+
+        $this->assertSame(2, $ship['structure_id']);
+        $this->assertSame('Structure Capital Shipyard', $ship['service']);
+    }
+
+    public function test_the_structure_type_bonus_is_folded_into_the_run_modifiers(): void
+    {
+        DB::table('dgmTypeAttributes')->insert([
+            ['typeID' => StructureTypes::RAITARU, 'attributeID' => 2600, 'valueInt' => null, 'valueFloat' => 0.99],
+            ['typeID' => StructureTypes::RAITARU, 'attributeID' => 2601, 'valueInt' => null, 'valueFloat' => 0.97],
+            ['typeID' => StructureTypes::RAITARU, 'attributeID' => 2602, 'valueInt' => null, 'valueFloat' => 0.85],
+        ]);
+
+        IndustryData::flush();
+
+        $assigner = new RunAssigner(
+            collect([
+                $this->structure(1, 'Raitaru', StructureTypes::RAITARU, [], 2.1, [175]),
+            ]),
+            productResolver: fn (int $productId) => $this->product(RigScope::ADV_COMPONENT, 334, 17)
+        );
+
+        $job = $assigner->for($this->recipe(9014, 334, IndustryActivity::MANUFACTURING));
+
+        $this->assertSame(0.99, $job['structure_bonus']['material']);
+        $this->assertSame(0.99, round($job['material_modifier'], 2));
+        $this->assertSame(0.97, round($job['cost_modifier'], 2));
+        $this->assertSame(0.85, round($job['time_modifier'], 2));
+    }
+
+    public function test_a_structure_type_that_publishes_no_bonus_reads_neutral(): void
+    {
+        $this->seedCapability();
+
+        $assigner = new RunAssigner(
+            collect([
+                $this->structure(1, 'Astrahus', StructureTypes::ASTRAHUS, [], 1.0, [175]),
+            ]),
+            productResolver: fn (int $productId) => $this->product(RigScope::ADV_COMPONENT, 334, 17)
+        );
+
+        $job = $assigner->for($this->recipe(9015, 334, IndustryActivity::MANUFACTURING));
+
+        $this->assertSame(['material' => 1.0, 'cost' => 1.0, 'time' => 1.0], $job['structure_bonus']);
+    }
+
+    // ----------------------------------------------------------------------
     // Helpers
     // ----------------------------------------------------------------------
 
     /**
-     * Resolve the scope the way the production path does, from the stub SDE rows.
+     * The assembly lines and service modules CCP publishes for the structures
+     * these tests talk about.
      */
-    private function scopeForProduct(int $productId): string
+    private function seedCapability(): void
+    {
+        DB::table(IndustryData::TABLE_ASSEMBLY_LINES)->insertOrIgnore([
+            [
+                'assemblyLineID' => 175,
+                'activityID' => IndustryActivity::MANUFACTURING,
+                'name' => 'Structure Basic Manufacturing',
+                'groupIDs' => json_encode([25, 26, 27, 334, 963, 1305]),
+                'categoryIDs' => json_encode([2, 4, 5, 17, 23, 65]),
+            ],
+            [
+                'assemblyLineID' => 176,
+                'activityID' => IndustryActivity::MANUFACTURING,
+                'name' => 'Structure Capital Shipyard',
+                'groupIDs' => json_encode([485, 547, 883, 1538, 4594, 5120]),
+                'categoryIDs' => json_encode([]),
+            ],
+            [
+                'assemblyLineID' => 178,
+                'activityID' => IndustryActivity::RESEARCH_TE,
+                'name' => 'Structure Time Efficiency Research',
+                'groupIDs' => null,
+                'categoryIDs' => null,
+            ],
+            [
+                'assemblyLineID' => 182,
+                'activityID' => IndustryActivity::REACTIONS,
+                'name' => 'Standup Composite Reactor',
+                'groupIDs' => json_encode([428, 429, 4932]),
+                'categoryIDs' => json_encode([]),
+            ],
+        ]);
+
+        DB::table(IndustryData::TABLE_INSTALLATIONS)->insertOrIgnore([
+            ['typeID' => 35878, 'assemblyLineIDs' => json_encode([175])],
+            ['typeID' => 35881, 'assemblyLineIDs' => json_encode([176])],
+            ['typeID' => 35891, 'assemblyLineIDs' => json_encode([178])],
+            ['typeID' => 45537, 'assemblyLineIDs' => json_encode([182])],
+        ]);
+
+        // The Tatara publishes the reaction time multiplier; the Astrahus publishes
+        // nothing, which is what the data says. The reactor and the capital shipyard
+        // publish the security class their service module may be onlined in.
+        DB::table('dgmTypeAttributes')->insertOrIgnore([
+            ['typeID' => StructureTypes::TATARA, 'attributeID' => 2721, 'valueInt' => null, 'valueFloat' => 0.75],
+            ['typeID' => 45537, 'attributeID' => 2581, 'valueInt' => null, 'valueFloat' => 1.0],
+            ['typeID' => 45537, 'attributeID' => 1970, 'valueInt' => null, 'valueFloat' => 1.0],
+            ['typeID' => 35881, 'attributeID' => 2581, 'valueInt' => null, 'valueFloat' => 1.0],
+            ['typeID' => 35881, 'attributeID' => 1970, 'valueInt' => null, 'valueFloat' => 1.0],
+        ]);
+
+        IndustryData::flush();
+        StructureBonuses::flush();
+        ServiceModules::flush();
+    }
+
+    /**
+     * Resolve a product the way the production path does, from the stub SDE rows.
+     */
+    private function productFor(int $productId): array
     {
         $row = DB::table('invTypes as t')
             ->leftJoin('invGroups as g', 'g.groupID', '=', 't.groupID')
             ->leftJoin('invCategories as c', 'c.categoryID', '=', 'g.categoryID')
             ->where('t.typeID', $productId)
-            ->first(['t.groupID', 'g.groupName', 'c.categoryName', 't.techLevel']);
+            ->first(['t.groupID', 'g.groupID', 'g.categoryID', 'g.groupName', 'c.categoryName', 't.techLevel']);
 
-        return $row
-            ? RigScope::tokenForProduct((int) $row->groupID, $row->groupName, $row->categoryName, $row->techLevel)
-            : 'general';
+        if (!$row) {
+            return ['scope' => 'general', 'groupID' => null, 'categoryID' => null];
+        }
+
+        return [
+            'scope' => RigScope::tokenForProduct(
+                (int) $row->groupID,
+                $row->groupName,
+                $row->categoryName,
+                $row->techLevel
+            ),
+            'groupID' => (int) $row->groupID,
+            'categoryID' => $row->categoryID !== null ? (int) $row->categoryID : null,
+        ];
     }
 
-    private function structure(int $structureId, string $name, int $typeId, array $rigs, float $multiplier = 2.1): array
+    private function product(string $scope, ?int $groupId, ?int $categoryId): array
     {
+        return ['scope' => $scope, 'groupID' => $groupId, 'categoryID' => $categoryId];
+    }
+
+    private function structure(
+        int $structureId,
+        string $name,
+        int $typeId,
+        array $rigs,
+        float $multiplier = 2.1,
+        array $lineIds = [],
+        ?float $security = -0.5,
+        array $lineMaxSecurity = []
+    ): array {
         $best = ['me' => 0.0, 'te' => 0.0, 'cost' => 0.0];
 
         foreach ($rigs as $rig) {
@@ -179,9 +443,10 @@ class RunAssignerTest extends TestCase
             'structure_id' => $structureId,
             'name' => $name,
             'type_id' => $typeId,
-            'security' => -0.5,
+            'security' => $security,
+            'lines' => $this->lines($lineIds, $lineMaxSecurity),
             'fit' => [
-                'band' => 'nullsec',
+                'band' => $security !== null && $security > 0.0 ? 'highsec' : 'nullsec',
                 'multiplier' => $multiplier,
                 'rigs' => $rigs,
                 'me_bonus' => $best['me'],
@@ -190,6 +455,40 @@ class RunAssignerTest extends TestCase
                 'source' => $rigs ? 'fitted' : 'base',
             ],
         ];
+    }
+
+    /**
+     * The fitted assembly lines, in the shape StructureServices hands them over.
+     */
+    private function lines(array $lineIds, array $maxSecurity = []): array
+    {
+        $out = [];
+
+        foreach ($lineIds as $lineId) {
+            $row = DB::table(IndustryData::TABLE_ASSEMBLY_LINES)
+                ->where('assemblyLineID', $lineId)
+                ->first();
+
+            if (!$row) {
+                continue;
+            }
+
+            $line = [
+                'assemblyLineID' => (int) $row->assemblyLineID,
+                'activityID' => (int) $row->activityID,
+                'name' => $row->name,
+                'groupIDs' => AssemblyLines::decode($row->groupIDs),
+                'categoryIDs' => AssemblyLines::decode($row->categoryIDs),
+            ];
+
+            if (array_key_exists($lineId, $maxSecurity)) {
+                $line['max_security'] = $maxSecurity[$lineId];
+            }
+
+            $out[$lineId] = $line;
+        }
+
+        return $out;
     }
 
     private function rig(int $typeId, string $name, array $bonuses, array $attributes, float $multiplier = 2.1): array
@@ -233,8 +532,9 @@ class RunAssignerTest extends TestCase
         $groups = [
             334 => ['categoryID' => 17, 'groupName' => 'Construction Components'],
             324 => ['categoryID' => 6, 'groupName' => 'Assault Frigate'],
-            1404 => ['categoryID' => 65, 'groupName' => 'Engineering Complex'],
             428 => ['categoryID' => 4, 'groupName' => 'Intermediate Materials'],
+            485 => ['categoryID' => 6, 'groupName' => 'Dreadnaught'],
+            1404 => ['categoryID' => 65, 'groupName' => 'Engineering Complex'],
         ];
 
         DB::table('invGroups')->insertOrIgnore([

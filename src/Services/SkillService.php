@@ -3,6 +3,7 @@
 namespace IndustryManager\Services;
 
 use Illuminate\Support\Facades\DB;
+use IndustryManager\Helpers\IndustryActivity;
 use IndustryManager\Helpers\IndustrySkill;
 
 /**
@@ -74,18 +75,27 @@ class SkillService
     }
 
     /**
-     * Manufacturing time multiplier (0,1] from the character's Industry +
-     * Advanced Industry levels. Multiply blueprint base time by this (then
-     * apply TE and structure/rig time bonuses separately).
+     * Time multiplier (0,1] for one activity from a character's skills.
+     * Multiply the activity's base time by this (then apply the blueprint's TE
+     * levels and the structure/rig time bonuses separately).
+     *
+     * Manufacturing reads Industry + Advanced Industry; copying reads Science;
+     * the two research types read Research and Metallurgy; invention and
+     * reactions each read one skill. Advanced Industry is the only one that
+     * covers several activities. See IndustrySkill::ACTIVITY_SKILLS.
+     */
+    public function timeMultiplier(int $characterId, int $activityId): float
+    {
+        return IndustrySkill::timeMultiplier($activityId, $this->levels($characterId));
+    }
+
+    /**
+     * Manufacturing time multiplier, for callers that only deal with
+     * manufacturing.
      */
     public function manufacturingTimeMultiplier(int $characterId): float
     {
-        $lv = $this->levels($characterId);
-
-        return IndustrySkill::manufacturingTimeMultiplier(
-            $lv[IndustrySkill::INDUSTRY] ?? 0,
-            $lv[IndustrySkill::ADVANCED_INDUSTRY] ?? 0
-        );
+        return $this->timeMultiplier($characterId, IndustryActivity::MANUFACTURING);
     }
 
     /**
@@ -95,9 +105,8 @@ class SkillService
      *
      * @param  int[]  $characterIds
      * @param  array  $requiredSkills
-     * @return array{character_id:int, time_multiplier:float}|null
      */
-    public function bestQualifiedCharacter(array $characterIds, array $requiredSkills): ?array
+    public function bestQualifiedCharacter(array $characterIds, array $requiredSkills, int $activityId = IndustryActivity::MANUFACTURING): ?array
     {
         $best = null;
 
@@ -107,7 +116,7 @@ class SkillService
                 continue;
             }
 
-            $mult = $this->manufacturingTimeMultiplier($cid);
+            $mult = $this->timeMultiplier($cid, $activityId);
             if ($best === null || $mult < $best['time_multiplier']) {
                 $best = ['character_id' => $cid, 'time_multiplier' => $mult];
             }
@@ -117,20 +126,19 @@ class SkillService
     }
 
     /**
-     * Across a set of characters, the one with the best manufacturing time
-     * multiplier, ignoring prerequisites. Used as a fallback when nobody fully
+     * Across a set of characters, the one with the best time multiplier for an
+     * activity, ignoring prerequisites. Used as a fallback when nobody fully
      * qualifies for a recipe, so a run is still attributed to someone.
      *
      * @param  int[]  $characterIds
-     * @return array{character_id:int, time_multiplier:float}|null
      */
-    public function bestTimeMultiplier(array $characterIds): ?array
+    public function bestTimeMultiplier(array $characterIds, int $activityId = IndustryActivity::MANUFACTURING): ?array
     {
         $best = null;
 
         foreach ($characterIds as $cid) {
             $cid = (int) $cid;
-            $mult = $this->manufacturingTimeMultiplier($cid);
+            $mult = $this->timeMultiplier($cid, $activityId);
 
             if ($best === null || $mult < $best['time_multiplier']) {
                 $best = ['character_id' => $cid, 'time_multiplier' => $mult];

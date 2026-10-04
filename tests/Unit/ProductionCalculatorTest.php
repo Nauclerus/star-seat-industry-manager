@@ -2,6 +2,7 @@
 
 namespace IndustryManager\Tests\Unit;
 
+use IndustryManager\Helpers\IndustryActivity;
 use IndustryManager\Services\ProductionCalculator;
 use PHPUnit\Framework\TestCase;
 
@@ -60,5 +61,33 @@ class ProductionCalculatorTest extends TestCase
     public function test_zero_runs_is_treated_as_one(): void
     {
         $this->assertSame(100, $this->calc->adjustedQuantity(100, 0, 0.0));
+    }
+
+    public function test_time_efficiency_is_two_percent_a_level_to_ten_levels(): void
+    {
+        $this->assertSame(1.0, ProductionCalculator::timeEfficiencyFactor(IndustryActivity::MANUFACTURING, 0));
+        $this->assertSame(0.98, round(ProductionCalculator::timeEfficiencyFactor(IndustryActivity::MANUFACTURING, 1), 6));
+        $this->assertSame(0.8, round(ProductionCalculator::timeEfficiencyFactor(IndustryActivity::MANUFACTURING, 10), 6));
+
+        // The ten levels a researched copy reaches is the floor.
+        $this->assertSame(0.8, round(ProductionCalculator::timeEfficiencyFactor(IndustryActivity::MANUFACTURING, 25), 6));
+    }
+
+    public function test_time_efficiency_only_touches_manufacturing(): void
+    {
+        // A copy is 80% of the build time in the archive itself, a research job
+        // carries its rank multiplier there, and reaction blueprints have no ME or
+        // TE levels at all — so TE changes none of those durations.
+        $others = [
+            IndustryActivity::COPYING,
+            IndustryActivity::RESEARCH_ME,
+            IndustryActivity::RESEARCH_TE,
+            IndustryActivity::INVENTION,
+            IndustryActivity::REACTIONS,
+        ];
+
+        foreach ($others as $activityId) {
+            $this->assertSame(1.0, ProductionCalculator::timeEfficiencyFactor($activityId, 10));
+        }
     }
 }

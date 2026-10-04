@@ -764,3 +764,45 @@
     color: var(--im-text-muted);
     opacity: 0.8;
 }
+
+/* ============================================
+   Structure services, activities and structure bonuses
+   ============================================ */
+.industry-manager-wrapper .im-badge-scope {
+    background: rgba(23,162,184,0.18); color: #3ec9dd;
+}
+.industry-manager-wrapper .im-badge-denied {
+    background: rgba(220,53,69,0.18); color: #ff6b6b;
+}
+.industry-manager-wrapper .im-badge-activity {
+    background: rgba(40,167,69,0.16); color: #51cf66;
+}
+.industry-manager-wrapper .im-badge-gap {
+    background: rgba(108,117,125,0.2); color: #9aa0a6;
+}
+.industry-manager-wrapper .im-structure-services,
+.industry-manager-wrapper .im-structure-bonuses {
+    padding: var(--im-spacing-sm) 0;
+    border-bottom: 1px solid var(--im-border);
+    margin-bottom: var(--im-spacing-sm);
+}
+.industry-manager-wrapper .im-service-row {
+    display: flex; align-items: center; gap: 6px;
+    padding: 2px 0;
+}
+.industry-manager-wrapper .im-service-name { color: var(--im-text-light); font-size: 0.85rem; }
+.industry-manager-wrapper .im-activity-row {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    margin-top: var(--im-spacing-sm);
+}
+.industry-manager-wrapper .im-bonus-row {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+    padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.industry-manager-wrapper .im-bonus-activity {
+    color: var(--im-text-light); font-size: 0.82rem; min-width: 120px;
+}
+.industry-manager-wrapper .im-rig-effective { border-bottom: none; border-top: 1px solid rgba(255,255,255,0.08); }
+.industry-manager-wrapper .im-badge-structure-bonus {
+    background: rgba(102,126,234,0.2); color: #a5b4fc;
+}

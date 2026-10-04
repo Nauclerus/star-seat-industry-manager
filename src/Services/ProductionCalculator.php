@@ -33,7 +33,14 @@ use IndustryManager\Helpers\IndustryData;
  * structureModifier and rigModifier default to 1.0 and are supplied by
  * StructureIndustryRigs when a structure is chosen — see the calculator's
  * `structure` parameter. Skills affect time only, never quantities, so they are
- * deliberately not part of this formula.
+ * deliberately not part of this formula. Blueprint ME levels are read on
+ * manufacturing only: a reaction blueprint has no ME, and copying, research and
+ * invention consume fixed inputs.
+ *
+ * Durations come from the SDE, which publishes one per activity: a copying job is
+ * 80% of the build time and a research job already carries its rank multiplier, so
+ * the only level applied here is the blueprint's own time efficiency — 2% off a
+ * manufacturing run per TE level, up to the ten levels a researched copy reaches.
  */
 class ProductionCalculator
 {
@@ -41,6 +48,9 @@ class ProductionCalculator
     private const RECIPE_TTL = 604800;
 
     private const DEFAULT_MAX_DEPTH = 5;
+
+    /** Time efficiency is 2% of a manufacturing run per level, up to 10 levels. */
+    private const TE_PER_LEVEL = 0.02;
 
     /** Per-request memo of the buildable map, keyed by activityId. */
     private static array $buildableMapMemo = [];
@@ -124,10 +134,12 @@ class ProductionCalculator
             return null;
         }
 
-        $me = (float) ($opts['me'] ?? 0);
+        $me = self::clampLevel((float) ($opts['me'] ?? 0));
+        $te = self::clampLevel((float) ($opts['te'] ?? 0));
         $runs = max(1, (int) ($opts['runs'] ?? 1));
         $maxDepth = (int) ($opts['max_depth'] ?? self::DEFAULT_MAX_DEPTH);
-        $subMe = (float) ($opts['sub_component_me'] ?? 0);
+        $subMe = self::clampLevel((float) ($opts['sub_component_me'] ?? 0));
+        $subTe = self::clampLevel((float) ($opts['sub_component_te'] ?? 0));
         $activityId = (int) ($opts['activity_id'] ?? IndustryActivity::MANUFACTURING);
         $structureModifier = (float) ($opts['structure_modifier'] ?? 1.0);
         $rigModifier = (float) ($opts['rig_modifier'] ?? 1.0);
@@ -137,8 +149,10 @@ class ProductionCalculator
             return null;
         }
 
+        $levels = ['me' => $me, 'sub_me' => $subMe, 'te' => $te, 'sub_te' => $subTe];
+
         $baseTotals = [];
-        $root = $this->expand($blueprintTypeId, $activityId, $runs, $me, $subMe, $maxDepth, 0, [], $baseTotals, $structureModifier, $rigModifier, $assigner);
+        $root = $this->expand($blueprintTypeId, $activityId, $runs, $levels, $maxDepth, 0, [], $baseTotals, $structureModifier, $rigModifier, $assigner);
 
         $baseList = array_values($baseTotals);
         usort($baseList, fn ($a, $b) => strcmp($a['name'], $b['name']));
@@ -148,8 +162,10 @@ class ProductionCalculator
             'base_materials' => $baseList,
             'assumptions' => [
                 'me' => $me,
+                'te' => $te,
                 'runs' => $runs,
                 'sub_component_me' => $subMe,
+                'sub_component_te' => $subTe,
                 'max_depth' => $maxDepth,
                 'activity_id' => $activityId,
                 'structure_modifier' => $structureModifier,
@@ -177,7 +193,7 @@ class ProductionCalculator
         }
 
         $runs = max(1, $runs);
-        $meFraction = max(0, min(10, $me)) / 100.0;
+        $meFraction = self::clampLevel((float) $me) / 100.0;
 
         $rows = [];
         foreach ($recipe['materials'] as $mat) {
@@ -213,6 +229,30 @@ class ProductionCalculator
     // ----------------------------------------------------------------------
     // Internals
     // ----------------------------------------------------------------------
+
+    /**
+     * Blueprint time efficiency: 2% off a manufacturing run per TE level, up to the
+     * ten levels a researched copy can reach.
+     *
+     * Only manufacturing is affected. Copying, research and invention durations are
+     * published per blueprint by the SDE (a copy is 80% of the build time, a research
+     * job already carries its rank multiplier), and reaction blueprints have no ME
+     * or TE levels at all.
+     */
+    public static function timeEfficiencyFactor(int $activityId, float $te): float
+    {
+        if ($activityId !== IndustryActivity::MANUFACTURING) {
+            return 1.0;
+        }
+
+        return 1.0 - self::clampLevel($te) * self::TE_PER_LEVEL;
+    }
+
+    /** ME and TE levels stop at 10. */
+    private static function clampLevel(float $level): float
+    {
+        return max(0.0, min(10.0, $level));
+    }
 
     private function buildRecipe(int $bp, int $activityId): ?array
     {
@@ -286,8 +326,7 @@ class ProductionCalculator
         int $bp,
         int $activityId,
         int $runs,
-        float $me,
-        float $subMe,
+        array $levels,
         int $maxDepth,
         int $depth,
         array $path,
@@ -297,7 +336,11 @@ class ProductionCalculator
         ?RunAssigner $assigner = null
     ): array {
         $recipe = $this->recipe($bp, $activityId);
-        $meFraction = $me / 100.0;
+        // Blueprint ME levels exist on manufacturing blueprints only: a reaction
+        // blueprint has no ME, and copying, research and invention consume fixed
+        // inputs that ME does not reduce.
+        $meFraction = $activityId === IndustryActivity::MANUFACTURING ? $levels['me'] / 100.0 : 0.0;
+        $teFactor = self::timeEfficiencyFactor($activityId, $levels['te']);
         $isCycle = in_array($bp, $path, true);
         $childPath = array_merge($path, [$bp]);
 
@@ -315,12 +358,13 @@ class ProductionCalculator
             'name' => $recipe['blueprint_name'] ?? ('Blueprint #' . $bp),
             'runs' => $runs,
             'time' => $recipe['time'] ?? 0,
+            'te_factor' => $teFactor,
             'depth' => $depth,
             'structure_modifier' => $structureModifier,
             'rig_modifier' => $rigModifier,
             'material_modifier' => $materialModifier,
             'time_modifier' => $timeModifier,
-            'adjusted_time' => (int) round(($recipe['time'] ?? 0) * $timeModifier),
+            'adjusted_time' => (int) round(($recipe['time'] ?? 0) * $teFactor * $timeModifier),
             'assignment' => $assignment,
             'materials' => [],
         ];
@@ -358,8 +402,8 @@ class ProductionCalculator
                     $mat['buildable_blueprint'],
                     IndustryActivity::MANUFACTURING,
                     $subRuns,
-                    $subMe,            // deeper levels use the sub-component ME assumption
-                    $subMe,
+                    // Deeper levels use the sub-component assumptions.
+                    ['me' => $levels['sub_me'], 'sub_me' => $levels['sub_me'], 'te' => $levels['sub_te'], 'sub_te' => $levels['sub_te']],
                     $maxDepth,
                     $depth + 1,
                     $childPath,

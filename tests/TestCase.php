@@ -75,5 +75,16 @@ abstract class TestCase extends Orchestra
                 $table->string('categoryName')->nullable();
             });
         }
+
+        // The structure-wide bonuses live in this core table; the plugin only
+        // reads it, and tests seed the values they need.
+        if (! Schema::hasTable('dgmTypeAttributes')) {
+            Schema::create('dgmTypeAttributes', function ($table) {
+                $table->integer('typeID');
+                $table->integer('attributeID');
+                $table->integer('valueInt')->nullable();
+                $table->float('valueFloat')->nullable();
+            });
+        }
     }
 }

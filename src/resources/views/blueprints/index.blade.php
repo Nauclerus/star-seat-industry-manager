@@ -82,7 +82,7 @@
                                             <span class="im-text-muted">{{ implode(', ', array_slice($g['owners'], 0, 3)) }}@if(count($g['owners']) > 3) +{{ count($g['owners']) - 3 }}@endif</span>
                                         </td>
                                         <td class="text-right">
-                                            <a href="{{ route('industry-manager.calculator', ['bp' => $g['type_id'], 'me' => $g['best_me']]) }}"
+                                            <a href="{{ route('industry-manager.calculator', ['bp' => $g['type_id'], 'me' => $g['best_me'], 'te' => $g['best_te']]) }}"
                                                class="btn btn-sm btn-im-primary">
                                                 <i class="fas fa-calculator mr-1"></i> Calculate
                                             </a>

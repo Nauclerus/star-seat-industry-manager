@@ -102,29 +102,34 @@ class IndustryManagerController extends Controller
 
         $bp = $request->query('bp');
         $me = (int) $request->query('me', 0);
+        $te = (int) $request->query('te', 0);
         $runs = (int) $request->query('runs', 1);
         $subMe = (int) $request->query('sub_me', 0);
+        $subTe = (int) $request->query('sub_te', 0);
         $activity = (int) $request->query('activity', IndustryActivity::MANUFACTURING);
 
         // Clamp inputs to sane ranges.
         $me = max(0, min(10, $me));
+        $te = max(0, min(10, $te));
         $subMe = max(0, min(10, $subMe));
+        $subTe = max(0, min(10, $subTe));
         $runs = max(1, min(100000, $runs));
 
-        // A chosen structure must belong to a corporation this user may see.
+        // A chosen structure must belong to a corporation this user may use.
         $structureId = ctype_digit((string) $request->query('structure')) ? (int) $request->query('structure') : null;
+        $candidates = $structures->forUser();
         $fit = $structureId ? $structures->fitForStructure($structureId) : null;
 
         // With a structure chosen, every run uses it. Without one, the assigner
         // picks the best structure per run — which is the point, since a rig only
         // covers the scopes its dogma effects write, so the right structure differs
         // between a component blueprint and a ship one.
-        $assigner = new RunAssigner($fit ? collect([$fit]) : $structures->forUser());
+        $assigner = new RunAssigner($fit ? collect([$fit]) : $candidates);
 
         $tree = null;
         $recipe = null;
         $productName = null;
-        $ownedMeOptions = [];
+        $ownedLevels = [];
 
         if ($sdeReady && $bp !== null && ctype_digit((string) $bp)) {
             $bp = (int) $bp;
@@ -133,8 +138,10 @@ class IndustryManagerController extends Controller
             if ($recipe) {
                 $tree = $calc->tree($bp, [
                     'me' => $me,
+                    'te' => $te,
                     'runs' => $runs,
                     'sub_component_me' => $subMe,
+                    'sub_component_te' => $subTe,
                     'activity_id' => $activity,
                     'rig_modifier' => $fit ? StructureIndustryRigs::materialModifier($fit) : 1.0,
                     'assigner' => $assigner,
@@ -144,13 +151,13 @@ class IndustryManagerController extends Controller
                     $productName = DB::table('invTypes')->where('typeID', $recipe['product_type_id'])->value('typeName');
                 }
 
-                // Offer the ME levels the user actually owns for this blueprint,
-                // so they can match the calc to a real copy/original.
-                $ownedMeOptions = $blueprints->forUser()
+                // Offer the ME/TE pairs the user actually owns for this blueprint,
+                // so they can match the calc to a real copy or original.
+                $ownedLevels = $blueprints->forUser()
                     ->where('type_id', $bp)
-                    ->pluck('me')
+                    ->map(fn ($b) => ['me' => (int) $b['me'], 'te' => (int) $b['te']])
                     ->unique()
-                    ->sortDesc()
+                    ->sortByDesc(fn ($l) => $l['me'] * 100 + $l['te'])
                     ->values()
                     ->all();
             }
@@ -168,15 +175,17 @@ class IndustryManagerController extends Controller
             'sdeReady' => $sdeReady,
             'bp' => $bp,
             'me' => $me,
+            'te' => $te,
             'runs' => $runs,
             'subMe' => $subMe,
+            'subTe' => $subTe,
             'activity' => $activity,
             'recipe' => $recipe,
             'tree' => $tree,
             'productName' => $productName,
-            'ownedMeOptions' => $ownedMeOptions,
+            'ownedLevels' => $ownedLevels,
             'picker' => $picker,
-            'structures' => $structures->forUser(),
+            'structures' => $candidates,
             'fit' => $fit,
         ]);
     }

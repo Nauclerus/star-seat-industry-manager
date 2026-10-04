@@ -37,9 +37,25 @@
                             </select>
                         </div>
                         <div class="form-group col-md-2">
+                            <label>TE %</label>
+                            <select name="te" class="form-control">
+                                @for($i = 0; $i <= 10; $i++)
+                                    <option value="{{ $i }}" {{ $te === $i ? 'selected' : '' }}>{{ $i }}</option>
+                                @endfor
+                            </select>
+                        </div>
+                        <div class="form-group col-md-2">
                             <label>Runs</label>
                             <input type="number" name="runs" class="form-control" value="{{ $runs }}" min="1" max="100000">
                         </div>
+                        <div class="form-group col-md-2">
+                            <button type="submit" class="btn btn-im-primary btn-block">
+                                <i class="fas fa-cogs mr-1"></i> Calculate
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="form-row align-items-end">
                         <div class="form-group col-md-2">
                             <label>Sub-build ME %</label>
                             <select name="sub_me" class="form-control">
@@ -50,31 +66,32 @@
                             <small class="im-text-muted">Assumed ME for deeper components.</small>
                         </div>
                         <div class="form-group col-md-2">
-                            <button type="submit" class="btn btn-im-primary btn-block">
-                                <i class="fas fa-cogs mr-1"></i> Calculate
-                            </button>
+                            <label>Sub-build TE %</label>
+                            <select name="sub_te" class="form-control">
+                                @for($i = 0; $i <= 10; $i++)
+                                    <option value="{{ $i }}" {{ $subTe === $i ? 'selected' : '' }}>{{ $i }}</option>
+                                @endfor
+                            </select>
+                            <small class="im-text-muted">Assumed TE for deeper components.</small>
                         </div>
-                    </div>
-
-                    <div class="form-row align-items-end">
                         <div class="form-group col-md-6">
-                            <label>Structure (applies its fitted rig bonuses)</label>
+                            <label>Structure (applies its services and rig bonuses)</label>
                             <select name="structure" class="form-control">
-                                <option value="">No structure — no rig bonus applied</option>
+                                <option value="">Choose per run</option>
                                 @foreach($structures as $st)
                                     <option value="{{ $st['structure_id'] }}" {{ (int) request('structure') === $st['structure_id'] ? 'selected' : '' }}>
-                                        {{ $st['name'] }} — {{ $st['security_class'] }} (×{{ $st['security_multiplier'] }})
+                                        {{ $st['name'] }} — {{ $st['class'] }} · {{ $st['security_class'] }} (×{{ $st['security_multiplier'] }})@if($st['scope'] === 'alliance') · alliance @endif
                                     </option>
                                 @endforeach
                             </select>
                         </div>
                     </div>
-                    @if(!empty($ownedMeOptions))
+                    @if(!empty($ownedLevels))
                         <div class="im-owned-me">
-                            <span class="im-text-muted">You own this blueprint at ME:</span>
-                            @foreach($ownedMeOptions as $ownMe)
-                                <a href="{{ route('industry-manager.calculator', ['bp' => $bp, 'me' => $ownMe, 'runs' => $runs, 'sub_me' => $subMe]) }}"
-                                   class="im-pill {{ $me === $ownMe ? 'active' : '' }}">ME {{ $ownMe }}</a>
+                            <span class="im-text-muted">You own this blueprint at:</span>
+                            @foreach($ownedLevels as $own)
+                                <a href="{{ route('industry-manager.calculator', ['bp' => $bp, 'me' => $own['me'], 'te' => $own['te'], 'runs' => $runs, 'sub_me' => $subMe, 'sub_te' => $subTe]) }}"
+                                   class="im-pill {{ $me === $own['me'] && $te === $own['te'] ? 'active' : '' }}">ME {{ $own['me'] }} · TE {{ $own['te'] }}</a>
                             @endforeach
                         </div>
                     @endif
@@ -142,13 +159,16 @@
                             <div class="im-result-value">{{ number_format($totalOutput) }} <span class="im-text-muted">({{ $runs }} run&times;{{ $recipe['product_quantity'] ?? 1 }})</span></div>
                         </div>
                         <div class="im-result-stat">
-                            <div class="im-result-label">Material Efficiency</div>
-                            <div class="im-result-value">{{ $me }}%</div>
+                            <div class="im-result-label">Blueprint levels</div>
+                            <div class="im-result-value">ME {{ $me }}% · TE {{ $te }}%</div>
                         </div>
                         <div class="im-result-stat">
-                            <div class="im-result-label">Base time / run</div>
-                            <div class="im-result-value">{{ \IndustryManager\Helpers\Format::duration($recipe['time'] ?? 0) }}</div>
-                            <div class="im-result-sub im-text-muted">before TE / skills / structure</div>
+                            <div class="im-result-label">Time / run</div>
+                            <div class="im-result-value">{{ \IndustryManager\Helpers\Format::duration($tree['root']['adjusted_time']) }}</div>
+                            <div class="im-result-sub im-text-muted">
+                                base {{ \IndustryManager\Helpers\Format::duration($recipe['time'] ?? 0) }}
+                                @if($te > 0) · TE -{{ $te * 2 }}% @endif
+                            </div>
                         </div>
                     </div>
 
@@ -234,9 +254,9 @@
                         <p class="im-text-muted">Choose one of your blueprints to break down its production:</p>
                         <div class="im-picker-grid">
                             @foreach($picker->take(60) as $p)
-                                <a href="{{ route('industry-manager.calculator', ['bp' => $p['type_id'], 'me' => $p['best_me']]) }}" class="im-picker-item">
+                                <a href="{{ route('industry-manager.calculator', ['bp' => $p['type_id'], 'me' => $p['best_me'], 'te' => $p['best_te']]) }}" class="im-picker-item">
                                     <span class="im-picker-name">{{ $p['type_name'] }}</span>
-                                    <span class="im-picker-meta">ME {{ $p['best_me'] }} · {{ $p['total'] }} owned</span>
+                                    <span class="im-picker-meta">ME {{ $p['best_me'] }} · TE {{ $p['best_te'] }} · {{ $p['total'] }} owned</span>
                                 </a>
                             @endforeach
                         </div>
