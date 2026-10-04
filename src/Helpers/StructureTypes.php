@@ -92,6 +92,12 @@ class StructureTypes
     /** The Supercapital Shipyard fits a Sotiyo and nothing else. */
     public const SUPERCAPITAL_SHIPYARD_HOSTS = [self::SOTIYO];
 
+    /** Can this structure type hold a service module at all? */
+    public static function isServiceHost(int $typeId): bool
+    {
+        return in_array($typeId, self::SERVICE_HOSTS, true);
+    }
+
     public static function name(int $typeId): string
     {
         return [
@@ -170,7 +176,7 @@ class StructureTypes
             return in_array($typeId, self::CAPITAL_SHIPYARD_HOSTS, true);
         }
 
-        return in_array($typeId, self::SERVICE_HOSTS, true);
+        return self::isServiceHost($typeId);
     }
 
     /**

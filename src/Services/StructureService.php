@@ -128,10 +128,12 @@ class StructureService
                 ];
             })
             ->filter(function (array $st) {
-                // A structure that provides no industry activity is not an industry
-                // structure, whatever it is otherwise good for.
+                // A service host with nothing fitted is a gap worth showing: it is a
+                // place an industry job could happen once the right module is in it.
+                // What is not shown is a structure that cannot hold a service module
+                // at all, such as a moon drill.
                 return IndustryData::isCapabilityInstalled()
-                    ? !empty($st['activities'])
+                    ? !empty($st['activities']) || StructureTypes::isServiceHost((int) $st['type_id'])
                     : true;
             })
             ->map(function (array $st) {

@@ -9,6 +9,14 @@
             <span class="im-text-muted">&middot; {{ $a['service'] }}</span>
         @endif
         <span class="im-text-muted">&middot; {{ $a['character_name'] ?: 'no character' }}</span>
+        @if(!empty($a['character_id']) && empty($a['character_qualified']))
+            @php($missing = $a['missing_skills'] ?? [])
+            @if(!empty($missing))
+                <span class="im-badge im-badge-assign-none" title="{{ implode(', ', array_map(fn ($s) => $s['name'] . ' ' . $s['required'] . ' (have ' . $s['have'] . ')', $missing)) }}">
+                    needs {{ count($missing) }} skill{{ count($missing) === 1 ? '' : 's' }}
+                </span>
+            @endif
+        @endif
         @if(!empty($node['adjusted_time']))
             <span class="im-text-muted" title="Duration of {{ number_format($node['runs']) }} run(s) in this plan">&middot; {{ \IndustryManager\Helpers\Format::duration($node['adjusted_time'] * $node['runs']) }}</span>
         @endif

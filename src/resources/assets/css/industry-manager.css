@@ -780,6 +780,9 @@
 .industry-manager-wrapper .im-badge-gap {
     background: rgba(108,117,125,0.2); color: #9aa0a6;
 }
+.industry-manager-wrapper .im-badge-assign-none {
+    background: rgba(255,193,7,0.18); color: #ffd451;
+}
 .industry-manager-wrapper .im-structure-services,
 .industry-manager-wrapper .im-structure-bonuses {
     padding: var(--im-spacing-sm) 0;

@@ -2,7 +2,10 @@
 
 namespace IndustryManager\Tests\Feature;
 
+use Illuminate\Auth\GenericUser;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use IndustryManager\Helpers\AssemblyLines;
 use IndustryManager\Helpers\IndustryActivity;
 use IndustryManager\Helpers\IndustryData;
@@ -325,6 +328,102 @@ class RunAssignerTest extends TestCase
         $this->assertSame(['material' => 1.0, 'cost' => 1.0, 'time' => 1.0], $job['structure_bonus']);
     }
 
+    public function test_the_character_named_for_a_run_is_one_that_can_run_it(): void
+    {
+        $this->seedCapability();
+        $this->linkCharacter(900, 'Capable Charlie', [3380 => 5, 3388 => 5]);
+        $this->linkCharacter(901, 'Slow Sam', [3380 => 1]);
+
+        $assigner = new RunAssigner(
+            collect([
+                $this->structure(1, 'Astrahus', StructureTypes::ASTRAHUS, [], 1.0, [175]),
+            ]),
+            productResolver: fn (int $productId) => $this->product(RigScope::ADV_COMPONENT, 334, 17)
+        );
+
+        $job = $assigner->for($this->recipe(9016, 334, IndustryActivity::MANUFACTURING, [
+            ['skill_id' => 3380, 'name' => 'Industry', 'level' => 5],
+        ]));
+
+        $this->assertSame(900, $job['character_id']);
+        $this->assertSame('Capable Charlie', $job['character_name']);
+        $this->assertTrue($job['character_qualified']);
+        $this->assertSame([], $job['missing_skills']);
+
+        // Industry 5 at 4% a level and Advanced Industry 5 at 3% a level, on a
+        // structure that carries no time bonus of its own. CCP applies each skill
+        // as a percent on the character's manufactureTimeMultiplier, so the two
+        // stack as 0.80 × 0.85 rather than as one 35% cut.
+        $this->assertSame(0.68, round($job['time_modifier'], 2));
+    }
+
+    public function test_a_run_nobody_qualifies_for_is_still_attributed_and_flagged(): void
+    {
+        $this->seedCapability();
+        $this->linkCharacter(902, 'Untrained Uri', [3380 => 2, 3388 => 4]);
+
+        $assigner = new RunAssigner(
+            collect([
+                $this->structure(1, 'Astrahus', StructureTypes::ASTRAHUS, [], 1.0, [175]),
+            ]),
+            productResolver: fn (int $productId) => $this->product(RigScope::ADV_COMPONENT, 334, 17)
+        );
+
+        $job = $assigner->for($this->recipe(9017, 334, IndustryActivity::MANUFACTURING, [
+            ['skill_id' => 3380, 'name' => 'Industry', 'level' => 5],
+        ]));
+
+        $this->assertSame(902, $job['character_id']);
+        $this->assertFalse($job['character_qualified']);
+        $this->assertSame(
+            ['skill_id' => 3380, 'name' => 'Industry', 'required' => 5, 'have' => 2],
+            $job['missing_skills'][0]
+        );
+
+        // The speed still counts: the plan says what this character would do to
+        // the clock, and the flag says they cannot start the job yet.
+        $this->assertSame(0.81, round($job['time_modifier'], 2));
+    }
+
+    public function test_a_stored_character_is_measured_against_the_recipe_too(): void
+    {
+        $this->seedCapability();
+        $this->linkCharacter(903, 'Capable Charlie', [3380 => 5]);
+        $this->linkCharacter(904, 'Untrained Uri', [3380 => 1]);
+
+        DB::table(IndustryData::TABLE_RUNS)->insert([
+            'project_id' => 9,
+            'blueprint_type_id' => 9018,
+            'activity_id' => IndustryActivity::MANUFACTURING,
+            'product_type_id' => 9018,
+            'runs' => 1,
+            'structure_id' => 1,
+            'character_id' => 904,
+            'is_override' => 1,
+        ]);
+
+        $assigner = new RunAssigner(
+            collect([
+                $this->structure(1, 'Astrahus', StructureTypes::ASTRAHUS, [], 1.0, [175]),
+            ]),
+            productResolver: fn (int $productId) => $this->product(RigScope::ADV_COMPONENT, 334, 17)
+        );
+
+        $assigner->loadAssignments(9);
+
+        $job = $assigner->for($this->recipe(9018, 334, IndustryActivity::MANUFACTURING, [
+            ['skill_id' => 3380, 'name' => 'Industry', 'level' => 5],
+        ]));
+
+        $this->assertTrue($job['is_override']);
+        $this->assertSame(904, $job['character_id']);
+        $this->assertFalse($job['character_qualified']);
+        $this->assertSame(
+            ['skill_id' => 3380, 'name' => 'Industry', 'required' => 5, 'have' => 1],
+            $job['missing_skills'][0]
+        );
+    }
+
     // ----------------------------------------------------------------------
     // Helpers
     // ----------------------------------------------------------------------
@@ -419,6 +518,73 @@ class RunAssignerTest extends TestCase
     private function product(string $scope, ?int $groupId, ?int $categoryId): array
     {
         return ['scope' => $scope, 'groupID' => $groupId, 'categoryID' => $categoryId];
+    }
+
+    /**
+     * A user with a linked character and that character's trained skills, in the
+     * tables SeAT syncs, so the character half of an assignment is exercised
+     * against the same shape the live read path uses.
+     */
+    private function linkCharacter(int $characterId, string $name, array $skills): void
+    {
+        if (! Schema::hasTable('refresh_tokens')) {
+            Schema::create('refresh_tokens', function ($table) {
+                $table->integer('user_id');
+                $table->bigInteger('character_id')->primary();
+                $table->timestamp('deleted_at')->nullable();
+            });
+        }
+
+        if (! Schema::hasTable('character_affiliations')) {
+            Schema::create('character_affiliations', function ($table) {
+                $table->bigInteger('character_id')->primary();
+                $table->bigInteger('corporation_id');
+                $table->bigInteger('alliance_id')->nullable();
+            });
+        }
+
+        if (! Schema::hasTable('character_infos')) {
+            Schema::create('character_infos', function ($table) {
+                $table->bigInteger('character_id')->primary();
+                $table->string('name');
+            });
+        }
+
+        if (! Schema::hasTable('character_skills')) {
+            Schema::create('character_skills', function ($table) {
+                $table->bigInteger('character_id');
+                $table->integer('skill_id');
+                $table->integer('trained_skill_level');
+                $table->primary(['character_id', 'skill_id']);
+            });
+        }
+
+        DB::table('refresh_tokens')->insertOrIgnore([
+            'user_id' => 1,
+            'character_id' => $characterId,
+            'deleted_at' => null,
+        ]);
+
+        DB::table('character_affiliations')->insertOrIgnore([
+            'character_id' => $characterId,
+            'corporation_id' => 98690019,
+            'alliance_id' => 99011279,
+        ]);
+
+        DB::table('character_infos')->insertOrIgnore([
+            'character_id' => $characterId,
+            'name' => $name,
+        ]);
+
+        foreach ($skills as $skillId => $level) {
+            DB::table('character_skills')->insertOrIgnore([
+                'character_id' => $characterId,
+                'skill_id' => $skillId,
+                'trained_skill_level' => $level,
+            ]);
+        }
+
+        Auth::setUser(new GenericUser(['id' => 1]));
     }
 
     private function structure(
@@ -517,8 +683,10 @@ class RunAssignerTest extends TestCase
 
     /**
      * A recipe in the shape ProductionCalculator::recipe() returns.
+     *
+     * @param  array  $skills  list of ['skill_id' => int, 'name' => string, 'level' => int]
      */
-    private function recipe(int $bp, int $groupId, int $activityId): array
+    private function recipe(int $bp, int $groupId, int $activityId, array $skills = []): array
     {
         // Seed the stub SDE so the scope resolver can classify the product.
         DB::table('invCategories')->insertOrIgnore([
@@ -558,7 +726,7 @@ class RunAssignerTest extends TestCase
             'product_quantity' => 1,
             'time' => 3600,
             'materials' => [],
-            'skills' => [],
+            'skills' => $skills,
         ];
     }
 }

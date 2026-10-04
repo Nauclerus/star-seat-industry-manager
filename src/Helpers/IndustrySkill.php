@@ -44,7 +44,15 @@ class IndustrySkill
     public const MASS_PRODUCTION = 3387;
     public const ADVANCED_MASS_PRODUCTION = 24625;
 
-    /** Per-level time reductions, as published on the skills themselves. */
+    /**
+     * Per-level time reductions, as published on the skills themselves:
+     * Industry 440 = -4, Advanced Industry 1961 = -3, Research 453 = -5,
+     * Metallurgy 468 = -5, Science 452 = -5, Reactions 2660 = -4.
+     *
+     * CCP scales that number by the trained level and applies it as a percent on
+     * the character attribute, so levels of one skill add up while two skills
+     * writing the same attribute multiply.
+     */
     public const TIME_PER_LEVEL = [
         self::INDUSTRY => 0.04,
         self::ADVANCED_INDUSTRY => 0.03,

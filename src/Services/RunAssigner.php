@@ -199,7 +199,19 @@ final class RunAssigner
         $character = $this->pickCharacter($recipe);
 
         if (isset($this->assignments[$key]) && $this->assignments[$key]['character_id'] !== null) {
-            $character = ['character_id' => $this->assignments[$key]['character_id'], 'name' => $this->characterName($character['character_id'])];
+            $characterId = (int) $this->assignments[$key]['character_id'];
+            $check = $this->skills->meets($characterId, $recipe['skills'] ?? []);
+
+            $character = [
+                'character_id' => $characterId,
+                'name' => $this->characterName($characterId),
+                'time_multiplier' => $this->skills->timeMultiplier(
+                    $characterId,
+                    (int) ($recipe['activity_id'] ?? IndustryActivity::MANUFACTURING)
+                ),
+                'qualified' => $check['ok'],
+                'missing_skills' => $check['missing'],
+            ];
         }
 
         // Rig bonuses are percentages, the structure bonuses are multipliers, and a
@@ -216,6 +228,8 @@ final class RunAssigner
             'structure_type_id' => $chosen['type_id'] ?? null,
             'character_id' => $character['character_id'] ?? null,
             'character_name' => $character['name'] ?? null,
+            'character_qualified' => $character['qualified'] ?? false,
+            'missing_skills' => $character['missing_skills'] ?? [],
             'service' => $line['name'] ?? null,
             'structure_bonus' => $bonus,
             'me_bonus' => $job['me'],
@@ -344,7 +358,7 @@ final class RunAssigner
     }
 
     /**
-     * @return array{character_id:?int, name:?string, time_multiplier:float}
+     * @return array{character_id:?int, name:?string, time_multiplier:float, qualified:bool, missing_skills:array}
      */
     private function pickCharacter(array $recipe): array
     {
@@ -352,14 +366,15 @@ final class RunAssigner
             $characterIds = $this->characters->characterIds();
 
             if (empty($characterIds)) {
-                return ['character_id' => null, 'name' => null, 'time_multiplier' => 1.0];
+                return $this->noCharacter();
             }
 
             // The activity decides which skills count: a copying job is faster with
             // Science, a reaction with Reactions, and only manufacturing reads Industry.
             $activityId = (int) ($recipe['activity_id'] ?? IndustryActivity::MANUFACTURING);
+            $required = $recipe['skills'] ?? [];
 
-            $best = $this->skills->bestQualifiedCharacter($characterIds, $recipe['skills'] ?? [], $activityId);
+            $best = $this->skills->bestQualifiedCharacter($characterIds, $required, $activityId);
 
             if ($best === null) {
                 // Nobody fully qualifies, so fall back to the fastest character rather
@@ -367,24 +382,45 @@ final class RunAssigner
                 $best = $this->skills->bestTimeMultiplier($characterIds, $activityId);
 
                 if ($best === null) {
-                    return ['character_id' => null, 'name' => null, 'time_multiplier' => 1.0];
+                    return $this->noCharacter();
                 }
             }
 
+            $characterId = (int) $best['character_id'];
+            $check = $this->skills->meets($characterId, $required);
+
             return [
-                'character_id' => (int) $best['character_id'],
-                'name' => $this->characterName((int) $best['character_id']),
+                'character_id' => $characterId,
+                'name' => $this->characterName($characterId),
                 'time_multiplier' => (float) $best['time_multiplier'],
+                'qualified' => $check['ok'],
+                'missing_skills' => $check['missing'],
             ];
         } catch (\Throwable $e) {
-            return ['character_id' => null, 'name' => null, 'time_multiplier' => 1.0];
+            return $this->noCharacter();
         }
+    }
+
+    /**
+     * @return array{character_id:?int, name:?string, time_multiplier:float, qualified:bool, missing_skills:array}
+     */
+    private function noCharacter(): array
+    {
+        return [
+            'character_id' => null,
+            'name' => null,
+            'time_multiplier' => 1.0,
+            'qualified' => false,
+            'missing_skills' => [],
+        ];
     }
 
     private function characterName(int $characterId): ?string
     {
         try {
-            return DB::table('characters')->where('character_id', $characterId)->value('name');
+            return DB::table('character_infos')
+                ->where('character_id', $characterId)
+                ->value('name');
         } catch (\Throwable $e) {
             return null;
         }

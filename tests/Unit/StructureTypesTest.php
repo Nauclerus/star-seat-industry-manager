@@ -86,6 +86,22 @@ class StructureTypesTest extends TestCase
         }
     }
 
+    public function test_only_a_structure_with_service_slots_is_an_industry_structure(): void
+    {
+        // The question the structures list asks: can a service module go in this
+        // structure at all? Everything on the list can, and a structure that cannot
+        // hold one is not an industry structure however industry-adjacent it looks.
+        foreach (StructureTypes::SERVICE_HOSTS as $typeId) {
+            $this->assertTrue(StructureTypes::isServiceHost($typeId), 'host ' . $typeId);
+        }
+
+        // A moon drill has modules fitted *in* it and a service module is fitted in
+        // a service host *using* it: neither is a place an activity happens.
+        foreach ([45009, 82941, 81826, 35899, 35878] as $typeId) {
+            $this->assertFalse(StructureTypes::isServiceHost($typeId), 'not a host: ' . $typeId);
+        }
+    }
+
     public function test_the_security_limits(): void
     {
         // Reactions: 0.4 is the top, 0.5 is highsec and does not exist.
