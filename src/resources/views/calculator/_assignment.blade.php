@@ -14,7 +14,7 @@
                 @if($a['cost_bonus'] > 0)-{{ $a['cost_bonus'] }}% cost @endif
             </span>
         @else
-            <span class="im-badge im-badge-assign-none" title="No fitted rig on this structure covers the scope '{{ $a['scope'] }}'">no rig for this job</span>
+            <span class="im-badge im-badge-assign-none" title="No rig fitted on this structure applies to this job">no rig for this job</span>
         @endif
 
         @if($a['is_override'])

@@ -4,7 +4,7 @@
 @section('page_header', 'Help & Documentation')
 
 @push('head')
-<link rel="stylesheet" href="{{ asset('vendor/industry-manager/css/industry-manager.css') }}?v=3">
+<link rel="stylesheet" href="{{ asset('vendor/industry-manager/css/industry-manager.css') }}?v=6">
 @endpush
 
 @section('full')
@@ -31,15 +31,14 @@
 
                 <h4>Structures &amp; rig bonuses</h4>
                 <p class="im-text-muted">
-                    Bonuses are read from the fitted rig's own dogma attributes — 2593 (TE), 2594 (ME), 2595 (job cost) — and scaled by the
-                    security multiplier stored on that rig (2355 high-sec, 2356 low-sec, 2357 null/Wormhole). Only one of the three is ever
-                    populated on a given rig. Skills affect duration and eligibility only, never material quantities.
+                    A structure's bonus comes from the rigs fitted in it. The same rig reads stronger in low-sec and null-sec than in
+                    high-sec, and each rig contributes only one bonus. Skills affect duration and eligibility, never material quantities.
                 </p>
 
                 <h4>Coming next</h4>
                 <ul class="im-text-muted">
-                    <li><strong>Best structure ranking</strong> — needs the rig's activity/size restriction confirmed, so the picker can tell whether a given ME rig applies to a given blueprint's category.</li>
-                    <li><strong>Recipe data</strong> — the calculator, invention, reactions and PI tree need EVE's industry recipe data, which is not part of SeAT's core SDE. See Settings for the current source.</li>
+                    <li><strong>Best structure ranking</strong> — which of your structures is the right one for a given blueprint.</li>
+                    <li><strong>Recipe data coverage</strong> — see Settings for the current source.</li>
                     <li><strong>ISK valuation</strong> — material cost, product value, and build-vs-buy, via Manager Core pricing (v1.1).</li>
                 </ul>
 

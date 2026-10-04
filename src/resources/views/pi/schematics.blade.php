@@ -4,7 +4,7 @@
 @section('page_header', 'PI Schematics')
 
 @push('head')
-<link rel="stylesheet" href="{{ asset('vendor/industry-manager/css/industry-manager.css') }}?v=5">
+<link rel="stylesheet" href="{{ asset('vendor/industry-manager/css/industry-manager.css') }}?v=6">
 @endpush
 
 @section('full')

@@ -4,7 +4,7 @@
 @section('page_header', trans('industry-manager::common.industry_manager'))
 
 @push('head')
-<link rel="stylesheet" href="{{ asset('vendor/industry-manager/css/industry-manager.css') }}?v=4">
+<link rel="stylesheet" href="{{ asset('vendor/industry-manager/css/industry-manager.css') }}?v=6">
 @endpush
 
 @section('full')
