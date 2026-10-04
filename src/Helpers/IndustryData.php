@@ -43,6 +43,9 @@ class IndustryData
     public const TABLE_PI_SCHEMATICS = 'industry_manager_pi_schematics';
     public const TABLE_PI_TYPEMAP = 'industry_manager_pi_types';
 
+    /** Plugin-owned dogma effect definitions — where a rig's scope lives. */
+    public const TABLE_EFFECTS = 'industry_manager_effects';
+
     /**
      * The manufacturing/invention/reaction set.
      */
@@ -64,12 +67,24 @@ class IndustryData
     ];
 
     /**
+     * Dogma effects, imported alongside the recipes by both sources. Tracked
+     * separately because the rig scope degrades gracefully: without it the
+     * calculator still works, it just cannot tell which fitted rig covers a
+     * given job.
+     */
+    public const EFFECT_TABLES = [
+        self::TABLE_EFFECTS,
+    ];
+
+    /**
      * Per-request memos so repeated isInstalled() calls don't re-hit the schema
      * inspector (which queries information_schema on MySQL).
      */
     private static ?bool $installedMemo = null;
 
     private static ?bool $piInstalledMemo = null;
+
+    private static ?bool $effectsInstalledMemo = null;
 
     /**
      * Is the manufacturing recipe data present AND populated?
@@ -114,6 +129,27 @@ class IndustryData
     }
 
     /**
+     * Are the dogma effect definitions present AND populated? Without them the
+     * rig scope cannot be resolved, so the calculator falls back to the fit-wide
+     * best-per-attribute behaviour instead of the applicable-rig behaviour.
+     */
+    public static function isEffectsInstalled(): bool
+    {
+        if (self::$effectsInstalledMemo !== null) {
+            return self::$effectsInstalledMemo;
+        }
+
+        try {
+            self::$effectsInstalledMemo = Schema::hasTable(self::TABLE_EFFECTS)
+                && DB::table(self::TABLE_EFFECTS)->exists();
+        } catch (\Throwable $e) {
+            self::$effectsInstalledMemo = false;
+        }
+
+        return self::$effectsInstalledMemo;
+    }
+
+    /**
      * Fine-grained presence check for an individual table, memo-free.
      */
     public static function hasTable(string $table): bool
@@ -133,6 +169,7 @@ class IndustryData
     {
         self::$installedMemo = null;
         self::$piInstalledMemo = null;
+        self::$effectsInstalledMemo = null;
     }
 
     /**

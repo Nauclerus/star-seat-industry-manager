@@ -83,10 +83,10 @@ class CcpJsonlSource implements RecipeSource
             File::makeDirectory($this->work, 0755, true);
         }
 
-        [$blueprints, $schematics] = $this->locateFiles();
+        [$blueprints, $schematics, $effects] = $this->locateFiles();
 
-        if (! $blueprints && ! $schematics) {
-            throw new \RuntimeException('Could not find or download CCP SDE files (blueprints.jsonl / planetSchematics.jsonl).');
+        if (! $blueprints && ! $schematics && ! $effects) {
+            throw new \RuntimeException('Could not find or download CCP SDE files (blueprints.jsonl / planetSchematics.jsonl / dogmaEffects.jsonl).');
         }
 
         $rows = [];
@@ -99,21 +99,26 @@ class CcpJsonlSource implements RecipeSource
             $rows = array_merge($rows, $this->importSchematics($schematics));
         }
 
+        if ($effects) {
+            $rows = array_merge($rows, $this->importEffects($effects));
+        }
+
         return $rows;
     }
 
     /**
-     * @return array{0:?string, 1:?string}
+     * @return array{0:?string, 1:?string, 2:?string}
      */
     private function locateFiles(): array
     {
         $blueprints = $this->findUnderStorage('blueprints.jsonl');
         $schematics = $this->findUnderStorage('planetSchematics.jsonl');
+        $effects = $this->findUnderStorage('dogmaEffects.jsonl');
 
-        if ($blueprints || $schematics) {
-            $this->version = $this->buildFromPath($blueprints ?? $schematics) ?? 'unknown';
+        if ($blueprints || $schematics || $effects) {
+            $this->version = $this->buildFromPath($blueprints ?? $schematics ?? $effects) ?? 'unknown';
 
-            return [$blueprints, $schematics];
+            return [$blueprints, $schematics, $effects];
         }
 
         return $this->downloadAndExtract();
@@ -159,7 +164,7 @@ class CcpJsonlSource implements RecipeSource
     }
 
     /**
-     * @return array{0:?string, 1:?string}
+     * @return array{0:?string, 1:?string, 2:?string}
      */
     private function downloadAndExtract(): array
     {
@@ -193,7 +198,7 @@ class CcpJsonlSource implements RecipeSource
             throw new \RuntimeException('Could not open the downloaded zip.');
         }
 
-        $wanted = ['blueprints.jsonl', 'planetSchematics.jsonl'];
+        $wanted = ['blueprints.jsonl', 'planetSchematics.jsonl', 'dogmaEffects.jsonl'];
         $found = [];
 
         for ($i = 0; $i < $zip->numFiles; $i++) {
@@ -209,7 +214,11 @@ class CcpJsonlSource implements RecipeSource
 
         $zip->close();
 
-        return [$found['blueprints.jsonl'] ?? null, $found['planetSchematics.jsonl'] ?? null];
+        return [
+            $found['blueprints.jsonl'] ?? null,
+            $found['planetSchematics.jsonl'] ?? null,
+            $found['dogmaEffects.jsonl'] ?? null,
+        ];
     }
 
     private function importBlueprints(string $path): array
@@ -395,10 +404,68 @@ class CcpJsonlSource implements RecipeSource
 
     private function truncate(): void
     {
-        foreach (array_merge(IndustryData::TABLES, IndustryData::PI_TABLES) as $table) {
+        foreach (array_merge(IndustryData::TABLES, IndustryData::PI_TABLES, IndustryData::EFFECT_TABLES) as $table) {
             if (IndustryData::hasTable($table)) {
                 DB::table($table)->delete();
             }
         }
+    }
+
+    /**
+     * Dogma effects — the definitions SeAT core does not seed. Stored as the
+     * plugin's own table so the rig scope can be resolved without a core change.
+     *
+     * `modifierInfo` is kept as the JSON CCP publishes it; the scope resolver
+     * reads `modifiedAttributeID` from it.
+     */
+    private function importEffects(string $path): array
+    {
+        $counts = [IndustryData::TABLE_EFFECTS => 0];
+        $buffer = [];
+
+        $handle = fopen($path, 'r');
+
+        while (($line = fgets($handle)) !== false) {
+            $line = trim($line);
+
+            if ($line === '') {
+                continue;
+            }
+
+            $effect = json_decode($line, true);
+
+            if (! is_array($effect)) {
+                continue;
+            }
+
+            $effectId = (int) ($effect['_key'] ?? 0);
+
+            if (! $effectId) {
+                continue;
+            }
+
+            $buffer[] = [
+                'effectID' => $effectId,
+                'effectName' => mb_substr((string) ($effect['name'] ?? ''), 0, 400),
+                'modifierInfo' => isset($effect['modifierInfo'])
+                    ? json_encode($effect['modifierInfo'])
+                    : null,
+            ];
+
+            if (count($buffer) >= 1000) {
+                DB::table(IndustryData::TABLE_EFFECTS)->insert($buffer);
+                $counts[IndustryData::TABLE_EFFECTS] += count($buffer);
+                $buffer = [];
+            }
+        }
+
+        if ($buffer) {
+            DB::table(IndustryData::TABLE_EFFECTS)->insert($buffer);
+            $counts[IndustryData::TABLE_EFFECTS] += count($buffer);
+        }
+
+        fclose($handle);
+
+        return $counts;
     }
 }

@@ -14,10 +14,14 @@ namespace IndustryManager\Helpers;
  *   2593  Time Efficiency bonus        -20 / -24 %   (T1 / T2)
  *   2594  Material Efficiency bonus     -2 / -2.4 %   (T1 / T2)
  *   2595  Job Cost optimization        -10 / -12 %   (T1 / T2)
+ *   2653  Thukker ME bonus             -3.7 %        (faction rigs only)
  *
- * A rig carries only its own bonus: the other two attributes read 0 on the same
- * type. So the resolver reads whichever is non-zero rather than assuming a
- * family, and a mixed fit is just the best effective value per attribute.
+ * A rig carries only its own bonus: the other attributes read 0 or are absent.
+ * Thukker rigs are the exception that matters — they store their ME bonus in 2653
+ * (`attributeThukkerEngRigMatBonus`) and leave 2594 absent, so reading only 2594
+ * would score them as unrigged. So the resolver reads whichever bonus attribute is
+ * non-zero rather than assuming a family, and a mixed fit is just the best
+ * effective value per attribute.
  *
  * The security multiplier is NOT a constant — it is stored on the rig itself:
  *
@@ -43,7 +47,12 @@ class RigAttributes
         self::TE_BONUS_ATTRIBUTE => 'te',
         self::ME_BONUS_ATTRIBUTE => 'me',
         self::COST_BONUS_ATTRIBUTE => 'cost',
+        // Thukker faction rigs carry their ME bonus here instead of 2594.
+        self::THUKKER_ME_BONUS_ATTRIBUTE => 'me',
     ];
+
+    /** Thukker ME bonus — `attributeThukkerEngRigMatBonus`. */
+    public const THUKKER_ME_BONUS_ATTRIBUTE = 2653;
 
     /** Security-band multiplier attributes, read from the rig when present. */
     public const HIGHSEC_MULTIPLIER_ATTRIBUTE = 2355;

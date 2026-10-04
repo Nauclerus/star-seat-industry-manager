@@ -5,6 +5,7 @@ namespace IndustryManager\Tests\Feature;
 use Illuminate\Support\Facades\DB;
 use IndustryManager\Helpers\IndustryData;
 use IndustryManager\Services\RecipeSources\FuzzworkSource;
+use IndustryManager\Services\StructureIndustryRigs;
 use IndustryManager\Tests\TestCase;
 
 /**
@@ -79,5 +80,28 @@ class FuzzworkSourceTest extends TestCase
         (new FuzzworkSource())->importFromSql('planetSchematics', "INSERT INTO `planetSchematics` VALUES (2,'Fresh',60);");
 
         $this->assertSame(2, DB::table(IndustryData::TABLE_PI_SCHEMATICS)->count());
+    }
+
+    /**
+     * dgmEffects has 28 dump columns but the plugin only keeps three. The row
+     * parser has to count all 28 to know where a row ends, so this guards the
+     * keep-subset as well as the parse.
+     */
+    public function test_dgm_effects_keeps_only_the_columns_the_scope_needs(): void
+    {
+        $columns = str_repeat('NULL,', 17);
+
+        $sql = "INSERT INTO `dgmEffects` VALUES (6824,'rigAdvComponentManufactureMaterialBonus',0,NULL,NULL,'desc','',NULL,0,0,"
+            . $columns
+            . "'[{\\\"domain\\\": \\\"structureID\\\", \\\"func\\\": \\\"ItemModifier\\\", \\\"modifiedAttributeID\\\": 2557}]');";
+
+        $rows = (new FuzzworkSource())->importFromSql('dgmEffects', $sql);
+
+        $this->assertSame(1, $rows);
+
+        $row = DB::table(IndustryData::TABLE_EFFECTS)->where('effectID', 6824)->first();
+
+        $this->assertSame('rigAdvComponentManufactureMaterialBonus', $row->effectName);
+        $this->assertSame([2557], StructureIndustryRigs::writtenAttributes($row->modifierInfo));
     }
 }
