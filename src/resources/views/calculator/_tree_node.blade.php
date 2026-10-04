@@ -16,6 +16,7 @@
                 <span class="im-tree-qty">&times;{{ number_format($mat['quantity']) }}</span>
             </summary>
             <div class="im-tree-children">
+                @include('industry-manager::calculator._assignment', ['node' => $mat['children'], 'depth' => $depth + 1])
                 @include('industry-manager::calculator._tree_node', ['node' => $mat['children'], 'depth' => $depth + 1])
             </div>
         </details>

@@ -56,6 +56,7 @@ abstract class TestCase extends Orchestra
                 $table->integer('typeID');
                 $table->string('typeName')->nullable();
                 $table->integer('groupID')->nullable();
+                $table->integer('techLevel')->nullable();
                 $table->integer('published')->nullable();
             });
         }

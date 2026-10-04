@@ -215,6 +215,7 @@
                                     <span class="im-tree-qty">&times;{{ number_format($totalOutput) }}</span>
                                 </div>
                                 <div class="im-tree-children">
+                                    @include('industry-manager::calculator._assignment', ['node' => $tree['root'], 'depth' => 0])
                                     @include('industry-manager::calculator._tree_node', ['node' => $tree['root'], 'depth' => 1])
                                 </div>
                             </div>

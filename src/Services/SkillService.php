@@ -115,4 +115,28 @@ class SkillService
 
         return $best;
     }
+
+    /**
+     * Across a set of characters, the one with the best manufacturing time
+     * multiplier, ignoring prerequisites. Used as a fallback when nobody fully
+     * qualifies for a recipe, so a run is still attributed to someone.
+     *
+     * @param  int[]  $characterIds
+     * @return array{character_id:int, time_multiplier:float}|null
+     */
+    public function bestTimeMultiplier(array $characterIds): ?array
+    {
+        $best = null;
+
+        foreach ($characterIds as $cid) {
+            $cid = (int) $cid;
+            $mult = $this->manufacturingTimeMultiplier($cid);
+
+            if ($best === null || $mult < $best['time_multiplier']) {
+                $best = ['character_id' => $cid, 'time_multiplier' => $mult];
+            }
+        }
+
+        return $best;
+    }
 }

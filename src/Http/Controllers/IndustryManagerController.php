@@ -15,6 +15,7 @@ use IndustryManager\Services\InventionCalculator;
 use IndustryManager\Services\JobsService;
 use IndustryManager\Services\ProductionCalculator;
 use IndustryManager\Services\ReactionService;
+use IndustryManager\Services\RunAssigner;
 use IndustryManager\Services\StatusService;
 use IndustryManager\Services\StructureIndustryRigs;
 use IndustryManager\Services\StructureService;
@@ -113,6 +114,12 @@ class IndustryManagerController extends Controller
         $structureId = ctype_digit((string) $request->query('structure')) ? (int) $request->query('structure') : null;
         $fit = $structureId ? $structures->fitForStructure($structureId) : null;
 
+        // With a structure chosen, every run uses it. Without one, the assigner
+        // picks the best structure per run — which is the point, since a rig only
+        // covers the scopes its dogma effects write, so the right structure differs
+        // between a component blueprint and a ship one.
+        $assigner = new RunAssigner($fit ? collect([$fit]) : $structures->forUser());
+
         $tree = null;
         $recipe = null;
         $productName = null;
@@ -129,6 +136,7 @@ class IndustryManagerController extends Controller
                     'sub_component_me' => $subMe,
                     'activity_id' => $activity,
                     'rig_modifier' => $fit ? StructureIndustryRigs::materialModifier($fit) : 1.0,
+                    'assigner' => $assigner,
                 ]);
 
                 if (! empty($recipe['product_type_id'])) {

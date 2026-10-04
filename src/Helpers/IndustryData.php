@@ -46,6 +46,9 @@ class IndustryData
     /** Plugin-owned dogma effect definitions — where a rig's scope lives. */
     public const TABLE_EFFECTS = 'industry_manager_effects';
 
+    /** Plugin-owned production plan: one row per run, with its assignment. */
+    public const TABLE_RUNS = 'industry_manager_production_runs';
+
     /**
      * The manufacturing/invention/reaction set.
      */
