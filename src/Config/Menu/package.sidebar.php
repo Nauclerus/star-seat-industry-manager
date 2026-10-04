@@ -59,6 +59,27 @@ return [
                 'permission' => 'industry-manager.view',
             ],
             [
+                'name'  => 'Planetary Industry',
+                'label' => 'industry-manager::menu.pi_overview',
+                'icon'  => 'fas fa-globe',
+                'route' => 'industry-manager.pi.overview',
+                'permission' => 'industry-manager.view',
+            ],
+            [
+                'name'  => 'PI Schematics',
+                'label' => 'industry-manager::menu.pi_schematics',
+                'icon'  => 'fas fa-sitemap',
+                'route' => 'industry-manager.pi.schematics',
+                'permission' => 'industry-manager.view',
+            ],
+            [
+                'name'  => 'PI Projects',
+                'label' => 'industry-manager::menu.pi_projects',
+                'icon'  => 'fas fa-clipboard-list',
+                'route' => 'industry-manager.pi.projects.index',
+                'permission' => 'industry-manager.view',
+            ],
+            [
                 'name'  => 'Settings',
                 'label' => 'industry-manager::menu.settings',
                 'icon'  => 'fas fa-cog',

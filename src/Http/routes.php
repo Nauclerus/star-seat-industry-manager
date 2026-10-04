@@ -78,6 +78,64 @@ Route::group([
         'middleware' => 'can:industry-manager.view',
     ]);
 
+    // -----------------------------------------------------------------
+    // Planetary Industry (read-only consumer of SeAT's character_planet_*
+    // tables + the registered PI schematic SDE)
+    // -----------------------------------------------------------------
+    Route::get('/planetary', [
+        'as' => 'industry-manager.pi.overview',
+        'uses' => 'PlanetaryController@overview',
+        'middleware' => 'can:industry-manager.view',
+    ]);
+
+    Route::get('/planetary/schematics', [
+        'as' => 'industry-manager.pi.schematics',
+        'uses' => 'PlanetaryController@schematics',
+        'middleware' => 'can:industry-manager.view',
+    ]);
+
+    // PI Projects (account-level production planning, user-scoped)
+    Route::get('/planetary/projects', [
+        'as' => 'industry-manager.pi.projects.index',
+        'uses' => 'PiProjectController@index',
+        'middleware' => 'can:industry-manager.view',
+    ]);
+    Route::post('/planetary/projects', [
+        'as' => 'industry-manager.pi.projects.store',
+        'uses' => 'PiProjectController@store',
+        'middleware' => 'can:industry-manager.view',
+    ]);
+    Route::get('/planetary/projects/{id}', [
+        'as' => 'industry-manager.pi.projects.show',
+        'uses' => 'PiProjectController@show',
+        'middleware' => 'can:industry-manager.view',
+    ])->where('id', '[0-9]+');
+    Route::post('/planetary/projects/{id}/delete', [
+        'as' => 'industry-manager.pi.projects.destroy',
+        'uses' => 'PiProjectController@destroy',
+        'middleware' => 'can:industry-manager.view',
+    ])->where('id', '[0-9]+');
+    Route::post('/planetary/projects/{id}/objectives', [
+        'as' => 'industry-manager.pi.projects.objectives.add',
+        'uses' => 'PiProjectController@addObjective',
+        'middleware' => 'can:industry-manager.view',
+    ])->where('id', '[0-9]+');
+    Route::post('/planetary/projects/{id}/objectives/{objectiveId}/delete', [
+        'as' => 'industry-manager.pi.projects.objectives.remove',
+        'uses' => 'PiProjectController@removeObjective',
+        'middleware' => 'can:industry-manager.view',
+    ])->where(['id' => '[0-9]+', 'objectiveId' => '[0-9]+']);
+    Route::post('/planetary/projects/{id}/planets', [
+        'as' => 'industry-manager.pi.projects.planets.assign',
+        'uses' => 'PiProjectController@assignPlanet',
+        'middleware' => 'can:industry-manager.view',
+    ])->where('id', '[0-9]+');
+    Route::post('/planetary/projects/{id}/planets/{rowId}/delete', [
+        'as' => 'industry-manager.pi.projects.planets.unassign',
+        'uses' => 'PiProjectController@unassignPlanet',
+        'middleware' => 'can:industry-manager.view',
+    ])->where(['id' => '[0-9]+', 'rowId' => '[0-9]+']);
+
     // Diagnostic — admin-only, NOT in sidebar. URL-only access.
     // Hosts the Sprint-0 attribute-ID discovery tool as its first tab.
     Route::get('/diagnostic', [

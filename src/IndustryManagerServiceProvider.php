@@ -31,10 +31,9 @@ class IndustryManagerServiceProvider extends AbstractSeatPlugin
 
         // Command registration uses the dual-path pattern from SM
         // (`commands()` for CLI bootstrap, `app->resolving(Kernel)` as the
-        // resolve-time fallback for web-invoked `Artisan::call(...)`). The
-        // command list is empty at scaffold time; populate as features land.
+        // resolve-time fallback for web-invoked `Artisan::call(...)`).
         $imCommands = [
-            // e.g. \IndustryManager\Console\Commands\SeedIndustryActivitiesCommand::class,
+            \IndustryManager\Console\Commands\ImportRecipesCommand::class,
         ];
 
         if (! empty($imCommands)) {
@@ -74,6 +73,16 @@ class IndustryManagerServiceProvider extends AbstractSeatPlugin
         $this->registerPermissions(__DIR__ . '/Config/Permissions/industry-manager.permissions.php', 'industry-manager');
 
         $this->mergeConfigFrom(__DIR__ . '/Config/industry-manager.config.php', 'industry-manager');
+
+        // NOTE on recipe data: the recipe tables are plugin-owned
+        // (`industry_manager_*`, created by the plugin's own migration) and are
+        // filled by `industry-manager:import-recipes`. That command auto-selects
+        // its source: CCP's official JSONL SDE when SeAT core can provide it,
+        // otherwise Fuzzwork's per-table gzip dumps — the path stock SeAT v5
+        // uses today. Neither writes anything outside the plugin's tables, so
+        // the plugin stays removable. IndustryData::isInstalled()/
+        // isPiInstalled() check for actual ROWS, so every recipe-powered page
+        // degrades to a neutral notice until the import runs.
     }
 
     public function getName(): string

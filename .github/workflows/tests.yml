@@ -1,0 +1,51 @@
+name: tests
+
+on:
+  push:
+    branches: [dev, star/build, main]
+  pull_request:
+    branches: [dev, star/build, main]
+
+jobs:
+  phpunit:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Match the deployed runtime (SeAT 5 runs PHP 8.4) and the floors the
+        # package declares.
+        php: ['8.2', '8.3', '8.4']
+
+    name: PHP ${{ matrix.php }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          # The dependency tree needs these; tests run on in-memory SQLite, so
+          # no database service is required.
+          extensions: mbstring, dom, curl, tokenizer, xml, fileinfo, zip, sqlite3, gmp, pcntl, posix, redis
+          coverage: none
+
+      - name: Cache Composer
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache
+          key: composer-${{ matrix.php }}-${{ hashFiles('composer.json') }}
+          restore-keys: composer-${{ matrix.php }}-
+
+      # There is no committed lock file (it is gitignored, as is normal for a
+      # plugin), and Laravel 10 carries advisories SeAT itself pins around, so
+      # do not let the advisory gate block the resolve here.
+      - name: Allow advisory resolve
+        run: composer config --global policy.advisories.block false
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Run tests
+        run: composer test
