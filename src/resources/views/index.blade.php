@@ -7,6 +7,9 @@
 <link rel="stylesheet" href="{{ asset('vendor/industry-manager/css/industry-manager.css') }}?v=7">
 @endpush
 
+@php($jobMetrics = $jobMetrics ?? [])
+@php($jobsReady = (bool) ($jobMetrics['has_data'] ?? false))
+
 @section('full')
 <div class="industry-manager-wrapper">
     <div class="industry-manager">
@@ -45,6 +48,35 @@
                 </div>
             </div>
         </div>
+
+        {{-- Industry jobs: how many are on the line now, and what this month
+             has cost. Zero when nothing is synced yet; the note below says so. --}}
+        <div class="row">
+            <div class="col-lg-3 col-md-6">
+                <div class="im-stat-card">
+                    <div class="im-stat-icon gradient"><i class="fas fa-play"></i></div>
+                    <div class="im-stat-label">Running Jobs</div>
+                    <div class="im-stat-value">{{ number_format($jobMetrics['running'] ?? 0) }}</div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <div class="im-stat-card">
+                    <div class="im-stat-icon im-bpo"><i class="fas fa-coins"></i></div>
+                    <div class="im-stat-label">Job Costs · {{ $jobMetrics['month_label'] ?? 'This Month' }}</div>
+                    <div class="im-stat-value">
+                        @if($jobsReady)
+                            {{ number_format($jobMetrics['month_cost'] ?? 0, 0) }} ISK
+                        @else
+                            &mdash;
+                        @endif
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @unless($jobsReady)
+            <p class="im-text-muted"><i class="fas fa-circle-info mr-1"></i> No industry jobs synced yet.</p>
+        @endunless
 
         <div class="card card-dark">
             <div class="card-header">

@@ -2,6 +2,7 @@
 
 namespace IndustryManager\Services;
 
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use IndustryManager\Helpers\IndustryActivity;
@@ -83,6 +84,79 @@ class JobsService
             'facets' => $facets,
             'context' => $context,
         ];
+    }
+
+    /**
+     * Dashboard headline metrics, over the same entitlement set as the jobs
+     * list (the user's own characters and their corporations).
+     *
+     *   running     — jobs ESI still reports as `active`, i.e. on the assembly
+     *                 line right now. `ready` jobs are finished and await
+     *                 delivery, so they are not running.
+     *   month_cost  — sum of ESI's reported install cost (the `cost` column SeAT
+     *                 syncs) for jobs started in the current calendar month.
+     *   has_data    — false when the user is entitled to no jobs at all, so the
+     *                 view can show an empty state instead of a bare zero.
+     *
+     * Read-only and failure-tolerant: a missing sync table or an unauthenticated
+     * user yields the empty set rather than an error on the dashboard.
+     *
+     * @return array{running:int, month_cost:float, month_label:string, has_data:bool}
+     */
+    public function metrics(): array
+    {
+        $default = [
+            'running' => 0,
+            'month_cost' => 0.0,
+            'month_label' => Carbon::now()->format('F Y'),
+            'has_data' => false,
+        ];
+
+        try {
+            $start = Carbon::now()->startOfMonth();
+            $end = Carbon::now()->endOfMonth();
+
+            $running = 0;
+            $monthCost = 0.0;
+            $total = 0;
+
+            // Each SeAT-synced job table uses its own owner column; the
+            // character table is entitled by character_id, the corporation
+            // table by corporation_id.
+            $sources = [
+                ['character_industry_jobs', 'character_id', $this->resolver->characterIds()],
+                ['corporation_industry_jobs', 'corporation_id', $this->resolver->ownCorporationIds()],
+            ];
+
+            foreach ($sources as [$table, $ownerColumn, $ownerIds]) {
+                if (empty($ownerIds)) {
+                    continue;
+                }
+
+                $total += DB::table($table)->whereIn($ownerColumn, $ownerIds)->count();
+
+                $running += DB::table($table)
+                    ->whereIn($ownerColumn, $ownerIds)
+                    ->where('status', 'active')
+                    ->count();
+
+                $monthCost += (float) DB::table($table)
+                    ->whereIn($ownerColumn, $ownerIds)
+                    ->whereBetween('start_date', [$start, $end])
+                    ->sum('cost');
+            }
+
+            return [
+                'running' => $running,
+                'month_cost' => $monthCost,
+                'month_label' => Carbon::now()->format('F Y'),
+                'has_data' => $total > 0,
+            ];
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('[Industry Manager] dashboard job metrics failed: ' . $e->getMessage());
+
+            return $default;
+        }
     }
 
     /**

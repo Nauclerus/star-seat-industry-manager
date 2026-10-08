@@ -20,11 +20,11 @@ dependsOn: [1]
 
 ## Task 4: Add dashboard metrics for running jobs and monthly job costs
 dependsOn: [1]
-- [ ] Identify the existing models/queries available for industry jobs and job cost data in the plugin.
-- [ ] Implement the aggregation for currently running jobs and total job costs for the current month.
-- [ ] Expose the metrics to the dashboard controller and render them in the dashboard view.
-- [ ] Handle the empty-data and no-permission cases so the dashboard does not error when there are no jobs.
-- [ ] Verify the displayed values match the underlying data for a sample period.
+- [x] Identify the existing models/queries available for industry jobs and job cost data in the plugin.
+- [x] Implement the aggregation for currently running jobs and total job costs for the current month.
+- [x] Expose the metrics to the dashboard controller and render them in the dashboard view.
+- [x] Handle the empty-data and no-permission cases so the dashboard does not error when there are no jobs.
+- [x] Verify the displayed values match the underlying data for a sample period.
 
 ## Task 5: General plugin polish pass
 dependsOn: [2, 3, 4]

@@ -32,10 +32,10 @@ use IndustryManager\Services\StructureService;
 class IndustryManagerController extends Controller
 {
     /**
-     * Dashboard — at-a-glance counts over the user's own blueprints, plus the
-     * SDE-installed status banner.
+     * Dashboard — at-a-glance counts over the user's own blueprints and industry
+     * jobs, plus the SDE-installed status banner.
      */
-    public function index(BlueprintRepository $blueprints)
+    public function index(BlueprintRepository $blueprints, JobsService $jobs)
     {
         $sdeReady = IndustryData::isInstalled();
 
@@ -57,7 +57,12 @@ class IndustryManagerController extends Controller
             \Illuminate\Support\Facades\Log::warning('[Industry Manager] dashboard stats failed: ' . $e->getMessage());
         }
 
-        return view('industry-manager::index', compact('stats'));
+        // JobsService::metrics() is entitled and failure-tolerant: no linked
+        // characters, no synced jobs or a missing table all render as the
+        // empty state instead of an error.
+        $jobMetrics = $jobs->metrics();
+
+        return view('industry-manager::index', compact('stats', 'jobMetrics'));
     }
 
     /**
