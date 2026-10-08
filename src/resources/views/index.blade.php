@@ -1,10 +1,10 @@
 @extends('web::layouts.grids.12')
 
-@section('title', trans('industry-manager::common.industry_manager'))
+@section('title', 'Dashboard — Industry Manager')
 @section('page_header', trans('industry-manager::common.industry_manager'))
 
 @push('head')
-<link rel="stylesheet" href="{{ asset('vendor/industry-manager/css/industry-manager.css') }}?v=7">
+<link rel="stylesheet" href="{{ asset('vendor/industry-manager/css/industry-manager.css') }}?v=8">
 @endpush
 
 @php($jobMetrics = $jobMetrics ?? [])
@@ -80,7 +80,7 @@
 
         <div class="card card-dark">
             <div class="card-header">
-                <h3 class="card-title"><i class="fas fa-industry mr-2"></i> Industry Manager</h3>
+                <h3 class="card-title mb-0"><i class="fas fa-industry mr-2"></i> Industry Manager</h3>
             </div>
             <div class="card-body">
                 <p class="im-text-muted">Your blueprints, what they need to build, and where to build them. All read from data SeAT already syncs (no ESI calls from this plugin).</p>

@@ -4,7 +4,7 @@
 @section('page_header', 'Industry Manager Diagnostic')
 
 @push('head')
-<link rel="stylesheet" href="{{ asset('vendor/industry-manager/css/industry-manager.css') }}?v=7">
+<link rel="stylesheet" href="{{ asset('vendor/industry-manager/css/industry-manager.css') }}?v=8">
 <style>
     .im-discovery .step-section { margin-bottom: 1.5rem; padding: 1rem; background-color: rgba(0,0,0,0.15); border: 1px solid var(--im-border); border-radius: var(--im-radius-md); }
     .im-discovery .step-section h4 { color: var(--im-text-white); margin-bottom: 0.5rem; }

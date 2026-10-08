@@ -28,10 +28,10 @@ dependsOn: [1]
 
 ## Task 5: General plugin polish pass
 dependsOn: [2, 3, 4]
-- [ ] Audit the main plugin views for inconsistent styling, stale labels, and leftover debug markup.
-- [ ] Apply consistent formatting and labels across Calculator, Structures, and Dashboard views.
-- [ ] Remove any commented-out or unreachable markup encountered during the audit.
-- [ ] Confirm navigation and links between the affected pages resolve correctly.
+- [x] Audit the main plugin views for inconsistent styling, stale labels, and leftover debug markup.
+- [x] Apply consistent formatting and labels across Calculator, Structures, and Dashboard views.
+- [x] Remove any commented-out or unreachable markup encountered during the audit.
+- [x] Confirm navigation and links between the affected pages resolve correctly.
 
 ## Task 6: Regression checks and smoke test
 dependsOn: [2, 3, 4, 5]

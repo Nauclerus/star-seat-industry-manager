@@ -186,17 +186,6 @@
 }
 
 /* ============================================
-   Scaffold notice (temporary — will be removed once dashboard ships)
-   ============================================ */
-.industry-manager-wrapper .im-scaffold-notice,
-.industry-manager-dashboard .im-scaffold-notice {
-    padding: var(--im-spacing-md);
-    background-color: rgba(255, 193, 7, 0.08);
-    border-left: 3px solid var(--im-warning);
-    border-radius: var(--im-radius-md);
-}
-
-/* ============================================
    SDE-not-installed notice
    ============================================ */
 .industry-manager-wrapper .im-sde-notice {
@@ -784,7 +773,8 @@
     background: rgba(255,193,7,0.18); color: #ffd451;
 }
 .industry-manager-wrapper .im-structure-services,
-.industry-manager-wrapper .im-structure-bonuses {
+.industry-manager-wrapper .im-structure-bonuses,
+.industry-manager-wrapper .im-structure-rigs {
     padding: var(--im-spacing-sm) 0;
     border-bottom: 1px solid var(--im-border);
     margin-bottom: var(--im-spacing-sm);

@@ -4,7 +4,7 @@
 @section('page_header', 'Production Calculator')
 
 @push('head')
-<link rel="stylesheet" href="{{ asset('vendor/industry-manager/css/industry-manager.css') }}?v=7">
+<link rel="stylesheet" href="{{ asset('vendor/industry-manager/css/industry-manager.css') }}?v=8">
 @endpush
 
 @section('full')
