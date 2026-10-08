@@ -1,8 +1,8 @@
 ## Task 1: Diagnose the broken Calculator page
-- [ ] Reproduce the failure on the Calculator route and record the exact error (HTTP status, stack trace, or blank view) in the task notes.
-- [ ] Locate the Calculator route, controller, and Blade view(s) in `src/` and `resources/views/`.
-- [ ] Identify the root cause and note the smallest change that restores correct rendering and calculation output.
-- [ ] Confirm whether the failure is a stale reference from a previous release (missing view, renamed class, changed config key).
+- [x] Reproduce the failure on the Calculator route and record the exact error (HTTP status, stack trace, or blank view) in the task notes.
+- [x] Locate the Calculator route, controller, and Blade view(s) in `src/` and `resources/views/`.
+- [x] Identify the root cause and note the smallest change that restores correct rendering and calculation output.
+- [x] Confirm whether the failure is a stale reference from a previous release (missing view, renamed class, changed config key).
 
 ## Task 2: Fix the Calculator page
 dependsOn: [1]
