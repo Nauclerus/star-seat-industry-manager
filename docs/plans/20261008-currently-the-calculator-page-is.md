@@ -13,10 +13,10 @@ dependsOn: [1]
 
 ## Task 3: Remove obsolete elements from the Structures page
 dependsOn: [1]
-- [ ] Audit the Structures page view(s) and controller for dead or superseded UI elements, fields, and links.
-- [ ] Remove or replace the obsolete elements, keeping any still-referenced data intact.
-- [ ] Verify the Structures page renders correctly and no remaining view references the removed items.
-- [ ] Run `composer test` to confirm the Structures changes introduce no regressions.
+- [x] Audit the Structures page view(s) and controller for dead or superseded UI elements, fields, and links.
+- [x] Remove or replace the obsolete elements, keeping any still-referenced data intact.
+- [x] Verify the Structures page renders correctly and no remaining view references the removed items.
+- [x] Run `composer test` to confirm the Structures changes introduce no regressions.
 
 ## Task 4: Add dashboard metrics for running jobs and monthly job costs
 dependsOn: [1]

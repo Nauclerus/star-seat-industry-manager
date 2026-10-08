@@ -66,7 +66,7 @@
                     <a href="{{ route('industry-manager.structures') }}" class="im-quicklink">
                         <i class="fas fa-building"></i>
                         <span class="im-quicklink-title">Structures</span>
-                        <span class="im-quicklink-sub">Rigs &amp; bonuses (coming soon)</span>
+                        <span class="im-quicklink-sub">Rigs, services &amp; bonuses for your structures</span>
                     </a>
                 </div>
             </div>

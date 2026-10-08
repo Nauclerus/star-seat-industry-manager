@@ -26,8 +26,8 @@ use IndustryManager\Services\StructureService;
  *
  * Sprint status:
  *   Sprint 0  -> diagnostic() attribute-ID discovery tool                (SHIPPED)
- *   v1.0.0    -> index/blueprints/calculator on the real engine          (THIS)
- *   later     -> structures rig bonuses, invention, reactions
+ *   v1.0.0    -> index/blueprints/calculator on the real engine          (SHIPPED)
+ *   v1.0.0    -> structures rig bonuses, invention, reactions            (SHIPPED)
  */
 class IndustryManagerController extends Controller
 {

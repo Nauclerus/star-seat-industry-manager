@@ -103,7 +103,6 @@ class StructureService
                     'lines' => $capability['lines'],
                     'activities' => $capability['activities'],
                     'access' => $status['status'],
-                    'access_denied' => $status['denied'],
                     'contents_known' => in_array($structureId, $withContents, true),
                     'bonuses' => $this->bonusesFor((int) $s->type_id),
                     'blocked' => $capability['blocked'] ?? [],
@@ -122,14 +121,12 @@ class StructureService
                 $fit = StructureIndustryRigs::forStructure($st['structure_id'], $st['security']);
 
                 return $st + [
-                    'security_band' => $fit['band'],
                     'security_multiplier' => $fit['multiplier'],
                     'rigs' => $fit['rigs'],
                     'fit' => $fit,
                     'me_bonus' => $fit['me_bonus'],
                     'te_bonus' => $fit['te_bonus'],
                     'cost_bonus' => $fit['cost_bonus'],
-                    'source' => $fit['source'],
                 ];
             })
             ->sortBy('name')
