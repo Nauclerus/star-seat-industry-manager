@@ -35,7 +35,7 @@ dependsOn: [2, 3, 4]
 
 ## Task 6: Regression checks and smoke test
 dependsOn: [2, 3, 4, 5]
-- [ ] Run `composer test` and confirm the full available suite passes.
-- [ ] Perform a manual smoke test covering Calculator, Structures, and Dashboard (load, calculate, refresh, empty state).
-- [ ] Record any residual findings and confirm none are blocking.
-- [ ] Update the plugin changelog or release notes to describe the Calculator fix, Structures cleanup, and dashboard metrics.
+- [x] Run `composer test` and confirm the full available suite passes.
+- [x] Perform a manual smoke test covering Calculator, Structures, and Dashboard (load, calculate, refresh, empty state).
+- [x] Record any residual findings and confirm none are blocking.
+- [x] Update the plugin changelog or release notes to describe the Calculator fix, Structures cleanup, and dashboard metrics.
