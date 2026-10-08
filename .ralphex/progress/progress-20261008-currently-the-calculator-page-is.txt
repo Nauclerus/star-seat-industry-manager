@@ -1,0 +1,236 @@
+# Plan execution: 20261008-currently-the-calculator-page-is.md
+Run: bd5c58d9-825a-4658-b482-cd398ac73c67
+Branch: dev-currently-the-calculator-page-is-e5a7c54b
+Worktree: /home/wolfvdz/.pi/plan-exec/worktrees/star-seat-industry-manager-b3b7f9aedccb-dev-currently-the-calculator-page-is-e5a7c54b
+[2026-10-08T20:37:18.309Z] Progress log initialized.
+[2026-10-08] Task 1 (Diagnose the broken Calculator page) — diagnosis complete.
+
+Reproduced the failure by booting the plugin under Orchestra Testbench and
+rendering the Calculator page through the controller (no HTTP/auth needed;
+the failure is in view compilation, before any SeAT layout logic runs).
+
+Exact error (rendering the Calculator with a seeded recipe, bp=681):
+  Illuminate\View\ViewException: syntax error, unexpected token "endif"
+  (View: src/resources/views/calculator/index.blade.php)
+The compiled view contains an orphan `<?php endif; ?>` with no matching `if`.
+
+Location of the page:
+  Route:      src/Http/routes.php  GET /industry-manager/calculator
+              (name industry-manager.calculator, middleware can:industry-manager.calculate)
+  Controller: src/Http/Controllers/IndustryManagerController.php::calculator()
+  Views:      src/resources/views/calculator/index.blade.php
+              src/resources/views/calculator/_assignment.blade.php
+              src/resources/views/calculator/_tree_node.blade.php
+
+Root cause: on line 83 of calculator/index.blade.php the structure <option>
+has two Blade directives written back to back with no separator:
+  ...@if($st['scope'] === 'alliance') · alliance @endif@if(!($st['contents_known'] ?? true)) · contents unknown @endif
+Blade's statement regex anchors directives with `\B@`; after `@endif` the next
+character is `f` (a word char) followed by `@`, which is a word boundary, so the
+second `@if` is not recognised and survives as literal text while its trailing
+`@endif` still compiles — an orphan `endif` and a PHP syntax error. The defect was
+introduced when the `@if(... contents_known ...)` clause was appended directly
+after the existing `@endif` (commits 8c3581b, reused by 0cb09d5).
+
+Smallest change that restores rendering: put whitespace between the two
+directives, i.e. `@endif @if(...)`. Verified locally by temporarily inserting the
+space: the same render test passed (assertion that "Test Blueprint" appears).
+That edit was reverted; applying it is Task 2's job.
+
+Stale reference check: NOT a stale release reference. The route, controller and
+all three Blade views exist; `contents_known` is produced by StructureService::
+forUser() and consumed consistently. No missing view, renamed class or changed
+config key is involved.
+
+Verification: full suite `composer test` -> OK, 148 tests, 613 assertions, 1 deprecation, 3 skipped.
+
+[2026-10-08T20:39:37.428Z] Task 1 accepted at 04c1801c88c8fa14ad692189873cd38cf1523bbd after verification.
+
+[2026-10-08] Task 2 (Fix the Calculator page) — fix applied and verified.
+
+Fix: src/resources/views/calculator/index.blade.php line 83 — separated the two
+adjacent Blade directives (`@endif@if(...)` -> `@endif @if(...)`) so the
+`contents_known` clause compiles instead of leaving an orphan `endif`.
+No controller change was needed; the diagnosis in Task 1 identified the view as
+the sole defect.
+
+Verification:
+- New regression test tests/Feature/CalculatorPageTest.php renders the page with
+  the exact failing option state (alliance scope + contents_known false).
+  * Without the space the test errors with:
+    Illuminate\View\ViewException: syntax error, unexpected token "endif"
+    (View: src/resources/views/calculator/index.blade.php)
+  * With the fix both tests pass (page renders; form fields bp/runs/me/te/
+    structure/sub_me/sub_te and submitted defaults preserved).
+- Known input set: blueprint 681, ME 10, runs 2, material 38 (base 86) ->
+  155 units, asserted in the rendered output.
+- `composer test`: OK, 150 tests, 626 assertions, 1 deprecation, 3 skipped
+  (was 148 tests before; +2 from the new regression test, no regressions).
+
+[2026-10-08] Task 2 complete; checkboxes marked in the plan.
+[2026-10-08T20:41:43.433Z] Task 2 accepted at 246dafacb537e10834ba186d59b42efb0ee17a9e after verification.
+
+[2026-10-08] Task 3 (Remove obsolete elements from the Structures page) — audit, cleanup and verification.
+
+Audit of src/resources/views/structures/index.blade.php and
+IndustryManagerController::structures() found the page itself free of dead
+references: every field it renders (name, type_name, class, size, system_name,
+security, security_class, security_multiplier, scope, access, contents_known,
+services, activities, blocked, bonuses, rigs, me/te/cost_bonus) is produced by
+StructureService::forUser(). The obsolete material was adjacent:
+
+1. src/resources/views/index.blade.php — the dashboard quicklink to
+   industry-manager.structures still advertised "Rigs & bonuses (coming soon)",
+   copy superseded once the page shipped. Replaced with
+   "Rigs, services & bonuses for your structures".
+2. IndustryManagerController docblock — sprint status listed "structures rig
+   bonuses, invention, reactions" as "later" though all three shipped. Updated to
+   (SHIPPED).
+3. StructureService::forUser() emitted three fields no view, controller or service
+   consumes: access_denied, security_band and top-level source (the rig-fit source
+   lives inside 'fit' and is read by RunAssigner from there). Dropped all three;
+   every still-referenced key (fit, lines, services, activities, blocked, bonuses,
+   me_bonus, te_bonus, cost_bonus) is kept.
+
+Verification:
+- New tests/Feature/StructuresPageTest.php (4 tests, 19 assertions) renders the
+  page with a fully-populated structure and with an unknown-contents structure,
+  checks every section, the empty state, and that the dashboard quicklink no
+  longer says "coming soon".
+- No remaining view/tests reference access_denied or security_band (only the new
+  test's own doc comment names them).
+- php -l clean on both changed PHP files.
+- `composer test`: OK, 154 tests, 645 assertions, 1 deprecation, 3 skipped
+  (was 150/626 before; +4 from the new Structures page test, no regressions).
+
+[2026-10-08] Task 3 complete; checkboxes marked in the plan.
+[2026-10-08T20:44:21.483Z] Task 3 accepted at da85c72649a1f88e0bfedda6aab1c4d0896d3ba1 after verification.
+
+[2026-10-08] Task 4 (Add dashboard metrics for running jobs and monthly job costs) — implemented and verified.
+
+Identified data: SeAT syncs `character_industry_jobs` and `corporation_industry_jobs`
+(both owned by eveseat/eveapi). Each row carries `status` and the ESI job install
+`cost` (double, nullable) plus `start_date`. The plugin's existing read path is
+JobsService::forUser(), entitled by CharacterResolver::characterIds() and
+ownCorporationIds(); there is no separate cost model, so `cost` is the job-cost
+source (the plugin is otherwise pricing-free by design).
+
+Implementation:
+- src/Services/JobsService.php — new metrics() aggregate over the same entitlement
+  set. running = count of status `active`; month_cost = sum of `cost` for jobs with
+  start_date in the current calendar month (Carbon::now()->startOfMonth()..endOfMonth());
+  month_label = e.g. "October 2026"; has_data = any entitled job at all. Whole body
+  wrapped in try/catch: an unauthenticated user or a missing sync table returns the
+  empty set (logged) instead of erroring the dashboard.
+- src/Http/Controllers/IndustryManagerController.php — index() now injects
+  JobsService and passes $jobMetrics to the view.
+- src/resources/views/index.blade.php — two dashboard stat cards ("Running Jobs",
+  "Job Costs · <month>") plus an empty-state note when has_data is false; view
+  tolerates a missing $jobMetrics (guarded with ?? []).
+
+Verification:
+- New tests/Feature/DashboardMetricsTest.php (6 tests, 17 assertions), current month
+  pinned to October 2026 via Carbon::setTestNow. Seed: char jobs 2 active/1 ready/
+  1 prior-month delivered, corp jobs 1 active/1 August delivered, plus another
+  character's active job outside the entitlement. Asserts running=2,
+  month_cost=6,250,000 (1,000,000+250,000+5,000,000), month_label="October 2026",
+  has_data=true; no-character and dropped-table cases return the empty set; both
+  populated and empty dashboard views render.
+- `composer test`: OK, 160 tests, 662 assertions, 1 deprecation, 3 skipped
+  (was 154/645 after Task 3; +6 tests from the new file, no regressions).
+- php -l clean on the three changed source files and the new test.
+
+[2026-10-08] Task 4 complete; checkboxes marked in the plan.
+[2026-10-08T20:48:42.602Z] Task 4 accepted at a09cddfb2b7018b61abb42518079fe2e6217fb1d after verification.
+
+[2026-10-08] Task 5 (General plugin polish pass) — audit, cleanup and verification.
+
+Audit of the main plugin views (Dashboard src/resources/views/index.blade.php,
+Calculator src/resources/views/calculator/index.blade.php, Structures
+src/resources/views/structures/index.blade.php) plus the shared design-system CSS
+found three concrete issues:
+
+1. Unreachable markup: src/resources/views/blueprints/detail.blade.php was never
+   returned by any controller. IndustryManagerController::blueprintDetail()
+   redirects industry-manager.blueprint.detail to the calculator, so the view was
+   dead placeholder copy that still advertised "Coming soon (Sprint 1)". Removed
+   the file; the redirect route is untouched, so old bookmarks still resolve.
+2. Stale scaffold labels: src/resources/lang/en/common.php still carried
+   coming_soon / scaffold_notice_title / scaffold_notice_body ("Real features land
+   sprint-by-sprint…"). With the placeholder view gone they were fully
+   unreferenced; removed. The live industry_manager / last_synced / no_data_yet
+   keys stay.
+3. Inconsistent styling:
+   - Dashboard tab title was just "Industry Manager" while every other page uses
+     "Page — Industry Manager"; now 'Dashboard — Industry Manager'.
+   - Dashboard card header lacked the `mb-0` convention Calculator/Structures use.
+   - .im-structure-rigs (the "Fitted rigs" block) was missing from the shared
+     services/bonuses spacing group in the CSS, so it rendered with no separator
+     from the preceding section; added to the group.
+   - Dead .im-scaffold-notice CSS block (self-labelled "temporary — will be
+     removed once dashboard ships") removed; the dashboard shipped.
+   - Bumped the stylesheet cache-buster ?v=7 -> ?v=8 across all remaining views so
+     the CSS change reaches cached clients.
+
+Verification:
+- New tests/Feature/PluginPolishTest.php (5 tests, 16 assertions) renders all three
+  pages and checks the shared chrome (industry-manager-wrapper > industry-manager,
+  same ?v=8 stylesheet) and card-header convention; asserts the dashboard
+  quicklinks and the calculator form/cross-link resolve to their named routes; and
+  asserts View::exists('industry-manager::blueprints.detail') is now false.
+- No remaining reference to blueprints/detail, coming_soon, scaffold_notice,
+  im-scaffold-notice or ?v=7 in src/ or tests/.
+- Navigation: dashboard -> blueprints/calculator/structures and calculator ->
+  calculator/blueprints all build from existing route names in src/Http/routes.php.
+- php -l clean on the changed PHP/view/test files.
+- `composer test`: OK, 165 tests, 678 assertions, 1 deprecation, 3 skipped
+  (was 160/662 after Task 4; +5 from the new polish test, no regressions).
+
+[2026-10-08] Task 5 complete; checkboxes marked in the plan.
+[2026-10-08T20:54:38.770Z] Task 5 accepted at 0dc938604ff4d1b6a0e8d3e8ea0d98fa73d03afc after verification.
+
+[2026-10-08] Task 6 (Regression checks and smoke test) — verification complete.
+
+`composer test`: OK, 171 tests, 689 assertions, 1 deprecation, 3 skipped
+(was 165/678 after Task 5; +6 tests from the new smoke test, no regressions).
+
+Node available: PHP runtime is the plugin's only executable interface here — the
+plugin is a SeAT/Blade package with no browser or JS test runner installed, so the
+"smoke test" was performed by driving the real controller actions under Orchestra
+Testbench rather than a live SeAT instance. Added tests/Feature/PageSmokeTest.php:
+
+  Calculator  — load (empty picker state), calculate a known input set
+                (bp=681, ME 10, 2 runs -> 155 units of material), refresh
+                (two renders byte-identical).
+  Structures  — load (empty state: "No industry structures found for your
+                corporations.").
+  Dashboard   — load (empty metrics: "Running Jobs" + "No industry jobs synced
+                yet.") and refresh (two renders byte-identical).
+
+The smoke test uses a deliberately signed-out user so every page must degrade to
+its empty state instead of erroring; the populated Calculator/Structures/Dashboard
+cases remain covered by CalculatorPageTest, StructuresPageTest, DashboardMetricsTest
+and PluginPolishTest.
+
+Changelog/release notes: the plugin had no changelog, README or release-notes file,
+so a root CHANGELOG.md was added with an [Unreleased] section describing the
+Calculator fix, the Structures cleanup and the dashboard job metrics.
+
+Residual findings (none blocking):
+1. 1 PHP deprecation: "Constant PDO::MYSQL_ATTR_SSL_CA is deprecated since 8.5"
+   raised from vendor/orchestra/testbench-core/laravel/config/database.php:62.
+   Vendor/framework code, not the plugin; no plugin file can fix it.
+2. 3 skipped tests in RealArchiveImportTest: they require the external CCP JSONL
+   archive via IM_REAL_SDE_ZIP, which is not present in this environment. Skips are
+   the test's designed behaviour, not failures.
+Neither affects the Calculator fix, the Structures cleanup or the dashboard metrics.
+
+[2026-10-08] Task 6 complete; checkboxes marked in the plan.
+[2026-10-08T20:55:42.782Z] Task 6 accepted at 0b885296dfdee50ad38a04aa8371d0668ada46de after verification.
+[2026-10-08T20:55:43.757Z] All plan checkboxes are complete.
+[2026-10-08T20:56:11.768Z] comprehensive_review found no issues.
+[2026-10-08T20:56:11.769Z] comprehensive_review passed.
+[2026-10-08T20:56:11.813Z] Final verification passed for the reviewed candidate.
+[2026-10-08T20:56:12.758Z] 6/6 tasks accepted; 6 attempts; input tokens: unavailable; output tokens: unavailable; cost: unavailable
+[2026-10-08T20:56:13.775Z] Archived plan to /home/wolfvdz/.pi/plan-exec/worktrees/star-seat-industry-manager-b3b7f9aedccb-dev-currently-the-calculator-page-is-e5a7c54b/docs/plans/completed/20261008-currently-the-calculator-page-is.md.
+[2026-10-08T20:56:13.776Z] Archival prepared for completed; waiting for owned Git commands to retire.
