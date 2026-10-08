@@ -6,10 +6,10 @@
 
 ## Task 2: Fix the Calculator page
 dependsOn: [1]
-- [ ] Apply the minimal fix to the Calculator controller and/or view identified in Task 1.
-- [ ] Verify the calculation flow produces correct results for at least one known input set.
-- [ ] Confirm the page renders without console/Blade errors and preserves existing form fields and defaults.
-- [ ] Run the plugin test suite (`composer test`) and confirm no regressions in Calculator-related tests.
+- [x] Apply the minimal fix to the Calculator controller and/or view identified in Task 1.
+- [x] Verify the calculation flow produces correct results for at least one known input set.
+- [x] Confirm the page renders without console/Blade errors and preserves existing form fields and defaults.
+- [x] Run the plugin test suite (`composer test`) and confirm no regressions in Calculator-related tests.
 
 ## Task 3: Remove obsolete elements from the Structures page
 dependsOn: [1]

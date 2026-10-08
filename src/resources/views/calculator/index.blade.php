@@ -80,7 +80,7 @@
                                 <option value="">Choose per run</option>
                                 @foreach($structures as $st)
                                     <option value="{{ $st['structure_id'] }}" {{ (int) request('structure') === $st['structure_id'] ? 'selected' : '' }}>
-                                        {{ $st['name'] }} — {{ $st['class'] }} · {{ $st['security_class'] }} (×{{ $st['security_multiplier'] }})@if($st['scope'] === 'alliance') · alliance @endif@if(!($st['contents_known'] ?? true)) · contents unknown @endif
+                                        {{ $st['name'] }} — {{ $st['class'] }} · {{ $st['security_class'] }} (×{{ $st['security_multiplier'] }})@if($st['scope'] === 'alliance') · alliance @endif @if(!($st['contents_known'] ?? true)) · contents unknown @endif
                                     </option>
                                 @endforeach
                             </select>
